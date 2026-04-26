@@ -12,14 +12,26 @@ ACCENT = (233, 69, 96)
 WHITE = (255, 255, 255)
 
 
+EMOJI_FONT_PATH = str(Path(__file__).parent / "fonts" / "NotoEmoji.ttf")
+EMOJI_RE = re.compile(
+    r'[\U0001f000-\U0001ffff\U00002702-\U000027B0\U0000fe00-\U0000fe0f'
+    r'\U0001fa00-\U0001faff\U00002600-\U000026FF\U0000200d\U00002640'
+    r'\U00002642\U00002b50\U00002b55\U00002934-\U00002935'
+    r'\U00002b05-\U00002b07\U0000231a-\U0000231b\U000023e9-\U000023fa'
+    r'\U000025aa-\U000025fe\U00003030\U0000303d\U00003297\U00003299]+'
+)
+
+
 def _get_font(size: int, bold: bool = False):
     paths = [
         "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
         "/System/Library/Fonts/Helvetica.ttc",
         "/System/Library/Fonts/STHeiti Light.ttc",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
     ]
     if bold:
         paths.insert(0, "/System/Library/Fonts/Supplemental/Arial Bold.ttf")
+        paths.insert(1, "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf")
     for p in paths:
         if Path(p).exists():
             try:
@@ -77,17 +89,27 @@ def _split_sentences(text: str) -> list[str]:
     return final or [text]
 
 
-def _strip_emoji(text: str) -> str:
-    """Remove emoji characters that Pillow can't render."""
-    return re.sub(
-        r'[\U0001f000-\U0001ffff\U00002702-\U000027B0\U0000fe00-\U0000fe0f'
-        r'\U0001fa00-\U0001faff\U00002600-\U000026FF\U0000200d\U00002640'
-        r'\U00002642\U0000231a-\U0000231b\U000023e9-\U000023f3\U000023f8-\U000023fa'
-        r'\U000025aa-\U000025ab\U000025b6\U000025c0\U000025fb-\U000025fe'
-        r'\U00002934-\U00002935\U00002b05-\U00002b07\U00002b1b-\U00002b1c'
-        r'\U00002b50\U00002b55\U00003030\U0000303d\U00003297\U00003299]+',
-        '', text
-    ).strip()
+def _draw_text_with_emoji(draw, xy, text, fill, font, font_size):
+    """Draw text with emoji support — uses main font for text, Noto Emoji for emoji."""
+    try:
+        emoji_font = ImageFont.truetype(EMOJI_FONT_PATH, font_size)
+    except Exception:
+        draw.text(xy, text, fill=fill, font=font)
+        return
+
+    x, y = xy
+    parts = EMOJI_RE.split(text)
+    emojis = EMOJI_RE.findall(text)
+
+    for i, part in enumerate(parts):
+        if part:
+            draw.text((x, y), part, fill=fill, font=font)
+            bbox = draw.textbbox((0, 0), part, font=font)
+            x += bbox[2] - bbox[0]
+        if i < len(emojis):
+            draw.text((x, y), emojis[i], fill=fill, font=emoji_font)
+            bbox = draw.textbbox((0, 0), emojis[i], font=emoji_font)
+            x += bbox[2] - bbox[0]
 
 
 def _get_duration(path: str) -> float:
@@ -164,7 +186,6 @@ def _draw_karaoke(
     text_y = HEIGHT - 260
 
     text = sentences[active_idx] if active_idx < len(sentences) else ""
-    text = _strip_emoji(text)
     lines = _wrap_text(text, font, WIDTH - pad * 2, odraw)[:3]
     block_h = len(lines) * 58 + 30
 
@@ -176,8 +197,8 @@ def _draw_karaoke(
 
     y = text_y
     for line in lines:
-        odraw.text((pad + 2, y + 2), line, fill=(0, 0, 0, 200), font=font)
-        odraw.text((pad, y), line, fill=(255, 255, 255, 255), font=font)
+        _draw_text_with_emoji(odraw, (pad + 2, y + 2), line, fill=(0, 0, 0, 200), font=font, font_size=48)
+        _draw_text_with_emoji(odraw, (pad, y), line, fill=(255, 255, 255, 255), font=font, font_size=48)
         y += 58
 
     return Image.alpha_composite(img, overlay).convert("RGB")
