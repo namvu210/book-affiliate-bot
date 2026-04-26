@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📚 Book Affiliate Bot</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f2f5; color: #1a1a2e; }
+        .container { max-width: 900px; margin: 0 auto; padding: 20px; }
+        h1 { text-align: center; margin: 20px 0; font-size: 1.8em; }
+        .subtitle { text-align: center; color: #666; margin-bottom: 30px; }
+        .tabs { display: flex; gap: 0; margin-bottom: 0; }
+        .tab { flex: 1; padding: 12px; text-align: center; cursor: pointer; background: #e0e0e0; border: none; font-size: 1em; font-weight: 600; transition: all .2s; }
+        .tab.active { background: #fff; color: #e94560; border-bottom: 3px solid #e94560; }
+        .panel { display: none; background: #fff; padding: 24px; border-radius: 0 0 12px 12px; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+        .panel.active { display: block; }
+        label { display: block; font-weight: 600; margin: 12px 0 4px; }
+        input[type="text"], input[type="url"], textarea, select { width: 100%; padding: 10px 12px; border: 1.5px solid #ddd; border-radius: 8px; font-size: .95em; }
+        textarea { resize: vertical; min-height: 80px; }
+        input[type="file"] { margin: 8px 0; }
+        .btn { display: inline-block; padding: 12px 28px; background: #e94560; color: #fff; border: none; border-radius: 8px; font-size: 1em; font-weight: 600; cursor: pointer; margin-top: 16px; }
+        .btn:hover { background: #c73e54; }
+        .btn:disabled { background: #ccc; cursor: wait; }
+        #result { margin-top: 30px; }
+        .result-card { background: #fff; border-radius: 12px; padding: 20px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+        .result-card h3 { color: #e94560; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+        .result-card pre { background: #f8f9fa; padding: 14px; border-radius: 8px; white-space: pre-wrap; word-wrap: break-word; font-size: .9em; line-height: 1.6; }
+        .copy-btn { background: #16213e; color: #fff; border: none; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: .8em; float: right; }
+        .copy-btn:hover { background: #0f3460; }
+        .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+        .tag { background: #e8f4f8; color: #0f3460; padding: 4px 10px; border-radius: 20px; font-size: .85em; }
+        .spinner { display: none; text-align: center; padding: 40px; }
+        .spinner.show { display: block; }
+        .spinner::after { content: ''; display: inline-block; width: 40px; height: 40px; border: 4px solid #e94560; border-top-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .book-meta { background: #f8f9fa; padding: 14px; border-radius: 8px; margin-bottom: 16px; }
+        .book-meta strong { color: #e94560; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>📚 Book Affiliate Bot</h1>
+    <p class="subtitle">Upload sách PDF hoặc dán link Shopee → Tự động tạo review & bài đăng</p>
+
+    <div class="tabs">
+        <button class="tab active" onclick="switchTab('pdf')">📄 Upload PDF</button>
+        <button class="tab" onclick="switchTab('url')">🔗 Link Shopee</button>
+        <button class="tab" onclick="switchTab('manual')">✏️ Nhập tay</button>
+    </div>
+
+    <!-- PDF Upload -->
+    <div id="panel-pdf" class="panel active">
+        <form id="form-pdf" enctype="multipart/form-data">
+            <label>File PDF sách:</label>
+            <input type="file" name="file" accept=".pdf" required>
+            <label>Đối tượng:</label>
+            <select name="audience">
+                {% for key, val in audiences.items() %}
+                <option value="{{ key }}">{{ val.name }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit" class="btn">🚀 Tạo Review</button>
+        </form>
+    </div>
+
+    <!-- Shopee URL -->
+    <div id="panel-url" class="panel">
+        <form id="form-url" enctype="multipart/form-data">
+            <label>Link sản phẩm Shopee:</label>
+            <div style="display:flex;gap:8px">
+                <input type="url" name="url" placeholder="https://shopee.vn/..." required style="flex:1">
+                <button type="button" class="btn" onclick="suggestPersonas()" style="padding:8px 16px;font-size:.85em;white-space:nowrap">🎯 Gợi ý khách hàng</button>
+            </div>
+            <label>Link affiliate (tuỳ chọn):</label>
+            <input type="url" name="affiliate_url" placeholder="https://s.shopee.vn/... (link affiliate của bạn)">
+            <label>Ảnh/Video sản phẩm (tải từ <a href="https://chromewebstore.google.com/detail/shopee-save-download-prod/likamafaejphcadlcclbnjddckicmblo" target="_blank">Shopee Save extension</a>):</label>
+            <input type="file" name="media" accept="image/*,video/*" multiple>
+            <label>Đối tượng khách hàng:</label>
+            <div id="persona-list">
+                <select name="audience" id="audience-select">
+                    {% for key, val in audiences.items() %}
+                    <option value="{{ key }}">{{ val.name }}</option>
+                    {% endfor %}
+                    <option value="custom">✏️ Tự nhập...</option>
+                </select>
+            </div>
+            <div id="custom-persona" style="display:none;margin-top:8px;padding:12px;background:#f8f9fa;border-radius:8px">
+                <input type="text" id="cp-name" placeholder="Tên nhóm KH (VD: Sinh viên đại học)" style="margin-bottom:6px">
+                <input type="text" id="cp-tone" placeholder="Giọng văn (VD: trẻ trung, năng động)" style="margin-bottom:6px">
+                <input type="text" id="cp-focus" placeholder="Trọng tâm (VD: giá rẻ, tiện lợi)" >
+            </div>
+            <input type="hidden" name="custom_audience" id="custom-audience-json" value="">
+            <button type="submit" class="btn">🚀 Tạo Review</button>
+        </form>
+    </div>
+
+    <!-- Manual -->
+    <div id="panel-manual" class="panel">
+        <form id="form-manual">
+            <label>Tên sách:</label>
+            <input type="text" name="title" placeholder="VD: Đắc Nhân Tâm" required>
+            <label>Tác giả:</label>
+            <input type="text" name="author" placeholder="VD: Dale Carnegie">
+            <label>Mô tả / Nội dung chính:</label>
+            <textarea name="description" placeholder="Tóm tắt nội dung sách..."></textarea>
+            <label>Đối tượng:</label>
+            <select name="audience">
+                {% for key, val in audiences.items() %}
+                <option value="{{ key }}">{{ val.name }}</option>
+                {% endfor %}
+            </select>
+            <label>Nền tảng:</label>
+            <select name="platform">
+                <option value="facebook">Facebook</option>
+                <option value="tiktok">TikTok</option>
+            </select>
+            <button type="submit" class="btn">🚀 Tạo Review</button>
+        </form>
+    </div>
+
+    <div class="spinner" id="spinner">
+        <p style="margin-top:12px; color:#666;">Đang tạo review... (15-30 giây)</p>
+    </div>
+
+    <div id="result"></div>
+</div>
+
+<script>
+function switchTab(name) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    event.target.classList.add('active');
+    document.getElementById('panel-' + name).classList.add('active');
+}
+
+function copyText(id) {
+    const el = document.getElementById(id);
+    const text = el.value || el.textContent;
+    navigator.clipboard.writeText(text);
+    const btn = el.closest('.result-card').querySelector('.copy-btn');
+    btn.textContent = '✅ Đã copy!';
+    setTimeout(() => btn.textContent = '📋 Copy', 1500);
+}
+
+async function generateSpeech(platform) {
+    const textarea = document.getElementById('post-' + platform);
+    const text = textarea.value.trim();
+    if (!text) { alert('Nhập nội dung trước!'); return; }
+    const btn = document.getElementById('btn-speech-' + platform);
+    const audioDiv = document.getElementById('audio-' + platform);
+    btn.disabled = true;
+    btn.textContent = '⏳ Đang tạo...';
+    try {
+        const fd = new FormData();
+        fd.append('text', text);
+        fd.append('platform', platform);
+        const resp = await fetch('/generate-speech', { method: 'POST', body: fd });
+        if (!resp.ok) { const err = await resp.json(); throw new Error(err.detail || 'Lỗi'); }
+        const data = await resp.json();
+        audioDiv.innerHTML = `<audio controls style="height:36px"><source src="${data.audio_url}" type="audio/mpeg"></audio><a href="${data.audio_url}" download style="font-size:.85em;margin-left:4px">⬇️</a>`;
+        // Update the review data so video generation uses the new audio
+        if (window._lastReviewData && window._lastReviewData[platform]) {
+            window._lastReviewData[platform].audio_url = data.audio_url;
+            window._lastReviewData[platform].social_post = text;
+        }
+    } catch(e) {
+        audioDiv.innerHTML = `<span style="color:red;font-size:.85em">❌ ${e.message}</span>`;
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '🔊 Tạo giọng nói';
+    }
+}
+
+function renderResult(data) {
+    const r = document.getElementById('result');
+    let html = '';
+
+    // Book info
+    if (data.book) {
+        html += `<div class="book-meta">
+            <strong>📖 ${data.book.title}</strong> — ${data.book.author}
+            ${data.book.price ? ' | 💰 ' + data.book.price : ''}
+            ${data.book.rating ? ' | ⭐ ' + data.book.rating + '/5 (' + data.book.rating_count + ' đánh giá)' : ''}
+            ${data.book.review_count_used ? ' | 💬 ' + data.book.review_count_used + ' nhận xét thực được phân tích' : ''}
+            ${data.book.shopee_url ? ' | <a href="' + data.book.shopee_url + '" target="_blank">🛒 Shopee</a>' : ''}
+        </div>`;
+    }
+
+    // Product images gallery with selection
+    const imgs = data.product_images || data.product_images_original || [];
+    const localImgs = data.product_images || [];
+    if (imgs.length > 0) {
+        html += `<div class="result-card">
+            <h3>🖼️ Ảnh & Video sản phẩm (${imgs.length})</h3>
+            <div style="margin-bottom:10px">
+                <label style="display:inline;font-weight:normal;cursor:pointer">
+                    <input type="checkbox" id="select-all-imgs" onchange="toggleAllImages(this.checked)"> Chọn tất cả
+                </label>
+                <button class="btn" onclick="downloadSelectedImages()" style="padding:6px 16px;font-size:.85em;margin:0 0 0 12px">⬇️ Tải ảnh đã chọn</button>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:12px;padding:10px 0" id="image-gallery">
+                ${imgs.map((img, i) => {
+                    const local = localImgs[i] || '';
+                    const isVideo = img.match(/\.(mp4|mov|webm)/i);
+                    return `<div style="position:relative;flex-shrink:0">
+                        <input type="checkbox" class="img-check" data-url="${local || img}" data-index="${i}"
+                               style="position:absolute;top:6px;left:6px;width:20px;height:20px;z-index:2;cursor:pointer">
+                        ${isVideo
+                            ? `<video src="${local || img}" style="height:180px;border-radius:8px" controls></video>`
+                            : `<img src="${local || img}" style="height:180px;border-radius:8px;cursor:pointer;border:2px solid transparent"
+                                   onclick="window.open('${local || img}','_blank')" title="Ảnh ${i+1}">`
+                        }
+                    </div>`;
+                }).join('')}
+            </div>
+        </div>`;
+        window._productImages = localImgs.length ? localImgs : imgs;
+    }
+
+    // Render platform results
+    const platforms = data.facebook ? ['facebook', 'tiktok'] : [null];
+    for (const p of platforms) {
+        const d = p ? data[p] : data;
+        if (!d) continue;
+        const label = p === 'tiktok' ? '🎵 TikTok' : '📘 Facebook';
+        const postText = d.social_post || d.review || '';
+
+        html += `<div class="result-card">
+            <h3>${p ? label : '📝 Review'}
+                <button class="copy-btn" onclick="copyText('post-${p||'single'}')">📋 Copy</button>
+            </h3>
+            <textarea id="post-${p||'single'}" rows="10" style="width:100%;padding:12px;border:1.5px solid #ddd;border-radius:8px;font-size:.9em;line-height:1.6;font-family:inherit;resize:vertical">${postText}</textarea>
+            <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                <button class="btn" onclick="generateSpeech('${p||'single'}')" id="btn-speech-${p||'single'}" style="padding:8px 20px;font-size:.9em">
+                    🔊 Tạo giọng nói
+                </button>
+                <div id="audio-${p||'single'}">${d.audio_url ? `<audio controls style="height:36px"><source src="${d.audio_url}" type="audio/mpeg"></audio><a href="${d.audio_url}" download style="font-size:.85em;margin-left:4px">⬇️</a>` : ''}</div>
+            </div>
+            <div class="tags" style="margin-top:8px">${(d.hashtags||[]).map(t => '<span class="tag">' + t + '</span>').join('')}</div>
+        </div>`;
+
+        if (d.hook) {
+            html += `<div class="result-card">
+                <h3>🎬 Hook (mở đầu video)</h3>
+                <pre>${d.hook}</pre>
+            </div>`;
+        }
+
+        if (d.key_points) {
+            html += `<div class="result-card">
+                <h3>✨ Điểm nổi bật</h3>
+                <ul style="padding-left:20px">${d.key_points.map(p => '<li>' + p + '</li>').join('')}</ul>
+            </div>`;
+        }
+    }
+
+    // Video generation section
+    if (data.tiktok || data.facebook) {
+        const imgs = data.product_images || [];
+        html += `<div class="result-card">
+            <h3>🎬 Tạo Video (~30 giây)</h3>
+            <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px">
+                <select id="video-platform" style="padding:8px 12px;border-radius:8px;border:1.5px solid #ddd">
+                    ${data.tiktok ? '<option value="tiktok">🎵 TikTok</option>' : ''}
+                    ${data.facebook ? '<option value="facebook">📘 Facebook Reels</option>' : ''}
+                </select>
+            </div>
+            ${imgs.length > 0 ? `
+                <p style="font-size:.85em;color:#666;margin-bottom:8px">Chọn tối đa 4 ảnh cho video:</p>
+                <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px">
+                    ${imgs.map((img, i) => `
+                        <label style="position:relative;cursor:pointer">
+                            <input type="checkbox" class="vid-img-check" value="${img}" ${i < 4 ? 'checked' : ''}
+                                   style="position:absolute;top:4px;left:4px;width:18px;height:18px;z-index:2"
+                                   onchange="limitVideoImages(this)">
+                            <img src="${img}" style="height:100px;border-radius:6px;border:2px solid ${i < 4 ? '#e94560' : 'transparent'}"
+                                 onclick="this.previousElementSibling.click()">
+                        </label>
+                    `).join('')}
+                </div>
+            ` : ''}
+            <label style="font-weight:normal;font-size:.85em;color:#666">Hoặc upload thêm ảnh/video:
+                <input type="file" id="video-media-upload" accept="image/*,video/*" multiple style="margin-left:8px">
+            </label>
+            <button class="btn" id="btn-video" onclick="generateVideo()" style="background:#16213e;font-size:1.1em;padding:14px 36px">
+                🎬 Tạo Video
+            </button>
+            <div id="video-result" style="margin-top:16px"></div>
+        </div>`;
+        window._lastReviewData = data;
+    }
+
+    r.innerHTML = html;
+}
+
+async function submitForm(url, formData) {
+    document.getElementById('spinner').classList.add('show');
+    document.getElementById('result').innerHTML = '';
+    try {
+        const resp = await fetch(url, { method: 'POST', body: formData });
+        if (!resp.ok) {
+            const err = await resp.json();
+            throw new Error(err.detail || 'Lỗi server');
+        }
+        const data = await resp.json();
+        window._lastPdfPath = data._pdf_path || '';
+        renderResult(data);
+    } catch (e) {
+        document.getElementById('result').innerHTML =
+            `<div class="result-card" style="border-left:4px solid red"><h3>❌ Lỗi</h3><pre>${e.message}</pre></div>`;
+    } finally {
+        document.getElementById('spinner').classList.remove('show');
+    }
+}
+
+document.getElementById('form-pdf').addEventListener('submit', e => {
+    e.preventDefault();
+    submitForm('/upload-pdf', new FormData(e.target));
+});
+
+document.getElementById('form-url').addEventListener('submit', e => {
+    e.preventDefault();
+    // Set custom_audience JSON if custom persona selected
+    const sel = document.getElementById('audience-select');
+    const caField = document.getElementById('custom-audience-json');
+    if (sel.value === 'custom') {
+        caField.value = JSON.stringify({
+            name: document.getElementById('cp-name').value || 'Khách hàng',
+            tone: document.getElementById('cp-tone').value || 'thân thiện',
+            focus: document.getElementById('cp-focus').value || 'chất lượng sản phẩm',
+        });
+    } else if (sel.value.startsWith('suggested-')) {
+        caField.value = sel.options[sel.selectedIndex].dataset.persona || '';
+    } else {
+        caField.value = '';
+    }
+    submitForm('/from-url', new FormData(e.target));
+});
+
+// Show/hide custom persona fields
+document.addEventListener('change', e => {
+    if (e.target.id === 'audience-select') {
+        document.getElementById('custom-persona').style.display = e.target.value === 'custom' ? 'block' : 'none';
+    }
+});
+
+async function suggestPersonas() {
+    const urlInput = document.querySelector('#panel-url input[name="url"]');
+    const url = urlInput?.value?.trim();
+    if (!url) { alert('Nhập link Shopee trước!'); return; }
+    // Extract title from URL
+    const slug = decodeURIComponent(url.split('shopee.vn/')[1] || '').split('-i.')[0].replace(/-/g, ' ');
+    const sel = document.getElementById('audience-select');
+    sel.innerHTML = '<option disabled>⏳ Đang gợi ý...</option>';
+    try {
+        const fd = new FormData();
+        fd.append('title', slug);
+        const resp = await fetch('/suggest-personas', { method: 'POST', body: fd });
+        const data = await resp.json();
+        let opts = '';
+        (data.personas || []).forEach((p, i) => {
+            opts += `<option value="suggested-${i}" data-persona='${JSON.stringify(p).replace(/'/g,"&#39;")}'>🎯 ${p.name}</option>`;
+        });
+        // Add default audiences back
+        opts += `<optgroup label="── Mặc định ──">`;
+        document.querySelectorAll('#form-pdf select[name="audience"] option').forEach(o => {
+            opts += `<option value="${o.value}">${o.textContent}</option>`;
+        });
+        opts += `</optgroup>`;
+        opts += `<option value="custom">✏️ Tự nhập...</option>`;
+        sel.innerHTML = opts;
+    } catch(e) {
+        sel.innerHTML = `{% for key, val in audiences.items() %}<option value="{{ key }}">{{ val.name }}</option>{% endfor %}<option value="custom">✏️ Tự nhập...</option>`;
+    }
+}
+
+document.getElementById('form-manual').addEventListener('submit', e => {
+    e.preventDefault();
+    submitForm('/preview', new FormData(e.target));
+});
+
+async function fetchImages() {
+    const urlInput = document.querySelector('#panel-url input[name="url"]');
+    const url = urlInput?.value?.trim();
+    if (!url) { alert('Nhập link Shopee trước!'); return; }
+    document.getElementById('spinner').classList.add('show');
+    document.getElementById('result').innerHTML = '';
+    try {
+        const fd = new FormData();
+        fd.append('url', url);
+        const resp = await fetch('/fetch-images', { method: 'POST', body: fd });
+        if (!resp.ok) { const err = await resp.json(); throw new Error(err.detail || 'Lỗi'); }
+        const data = await resp.json();
+        let html = `<div class="book-meta">
+            <strong>📖 ${data.title || ''}</strong>
+            ${data.price ? ' | 💰 ' + data.price : ''}
+            ${data.rating ? ' | ⭐ ' + data.rating + '/5' : ''}
+        </div>`;
+        const imgs = data.product_images || [];
+        if (imgs.length > 0) {
+            html += `<div class="result-card">
+                <h3>🖼️ Ảnh & Video sản phẩm (${imgs.length})</h3>
+                <div style="margin-bottom:10px">
+                    <label style="display:inline;font-weight:normal;cursor:pointer">
+                        <input type="checkbox" id="select-all-imgs" onchange="toggleAllImages(this.checked)"> Chọn tất cả
+                    </label>
+                    <button class="btn" onclick="downloadSelectedImages()" style="padding:6px 16px;font-size:.85em;margin:0 0 0 12px">⬇️ Tải ảnh đã chọn</button>
+                </div>
+                <div style="display:flex;flex-wrap:wrap;gap:12px;padding:10px 0">
+                    ${imgs.map((img, i) => {
+                        const isVideo = img.match(/\.mp4/i);
+                        return `<div style="position:relative">
+                            <input type="checkbox" class="img-check" data-url="${img}" data-index="${i}"
+                                   style="position:absolute;top:6px;left:6px;width:20px;height:20px;z-index:2;cursor:pointer">
+                            ${isVideo
+                                ? `<video src="${img}" style="height:180px;border-radius:8px" controls></video>`
+                                : `<img src="${img}" style="height:180px;border-radius:8px;cursor:pointer"
+                                       onclick="window.open('${img}','_blank')">`
+                            }
+                        </div>`;
+                    }).join('')}
+                </div>
+            </div>`;
+        } else {
+            html += `<div class="result-card"><p>Không tìm thấy ảnh. Kiểm tra lại cookies Shopee.</p></div>`;
+        }
+        document.getElementById('result').innerHTML = html;
+    } catch(e) {
+        document.getElementById('result').innerHTML =
+            `<div class="result-card" style="border-left:4px solid red"><h3>❌ Lỗi</h3><pre>${e.message}</pre></div>`;
+    } finally {
+        document.getElementById('spinner').classList.remove('show');
+    }
+}
+
+function toggleAllImages(checked) {
+    document.querySelectorAll('.img-check').forEach(cb => cb.checked = checked);
+}
+
+function downloadSelectedImages() {
+    const checked = document.querySelectorAll('.img-check:checked');
+    if (checked.length === 0) { alert('Chọn ít nhất 1 ảnh để tải!'); return; }
+    checked.forEach(cb => {
+        const url = cb.dataset.url;
+        const i = cb.dataset.index;
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `product_${i}.jpg`;
+        document.body.appendChild(a); a.click(); a.remove();
+    });
+}
+
+function limitVideoImages(cb) {
+    const checked = document.querySelectorAll('.vid-img-check:checked');
+    if (checked.length > 4) { cb.checked = false; return; }
+    // Update border highlight
+    document.querySelectorAll('.vid-img-check').forEach(c => {
+        const img = c.nextElementSibling;
+        if (img) img.style.borderColor = c.checked ? '#e94560' : 'transparent';
+    });
+}
+
+async function generateVideo() {
+    const btn = document.getElementById('btn-video');
+    const vr = document.getElementById('video-result');
+    const platform = document.getElementById('video-platform').value;
+
+    // Get selected images
+    const selected = Array.from(document.querySelectorAll('.vid-img-check:checked')).map(c => c.value);
+
+    // Update review data with latest edited text
+    const textarea = document.getElementById('post-' + platform);
+    if (textarea && window._lastReviewData?.[platform]) {
+        window._lastReviewData[platform].social_post = textarea.value;
+    }
+
+    btn.disabled = true;
+    btn.textContent = '⏳ Đang tạo video...';
+    vr.innerHTML = '';
+    try {
+        const fd = new FormData();
+        fd.append('review_json', JSON.stringify(window._lastReviewData));
+        fd.append('pdf_path', window._lastPdfPath || '');
+        fd.append('platform', platform);
+        fd.append('selected_images', JSON.stringify(selected));
+        const uploadEl = document.getElementById('video-media-upload');
+        if (uploadEl?.files) {
+            for (let i = 0; i < Math.min(uploadEl.files.length, 4); i++) {
+                fd.append('media', uploadEl.files[i]);
+            }
+        }
+        const resp = await fetch('/generate-video', { method: 'POST', body: fd });
+        if (!resp.ok) { const err = await resp.json(); throw new Error(err.detail || 'Lỗi'); }
+        const data = await resp.json();
+        const label = platform === 'facebook' ? 'Facebook Reels' : 'TikTok';
+        vr.innerHTML = `
+            <video controls style="width:100%;max-width:400px;border-radius:12px;margin-top:12px">
+                <source src="${data.video_url}" type="video/mp4">
+            </video>
+            <br><a href="${data.video_url}" download class="btn" style="margin-top:12px;display:inline-block;font-size:.9em">⬇️ Tải Video ${label}</a>`;
+    } catch(e) {
+        vr.innerHTML = `<p style="color:red">❌ ${e.message}</p>`;
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '🎬 Tạo Video';
+    }
+}
+</script>
+</body>
+</html>
