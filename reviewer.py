@@ -1,17 +1,21 @@
-"""Generate book reviews using Amazon Bedrock (Claude)."""
+"""Generate book reviews using Google Gemini."""
 
 import json
 
-import boto3
+import google.generativeai as genai
 
-from config import AWS_REGION, AUDIENCES, BEDROCK_MODEL_ID
+from config import GEMINI_API_KEY, GEMINI_MODEL, AUDIENCES
 from extractor import BookInfo
 
+_model = None
 
-def _get_client():
-    # Fresh session each call to pick up rotated credentials
-    session = boto3.Session()
-    return session.client("bedrock-runtime", region_name=AWS_REGION)
+
+def _get_model():
+    global _model
+    if _model is None:
+        genai.configure(api_key=GEMINI_API_KEY)
+        _model = genai.GenerativeModel(GEMINI_MODEL)
+    return _model
 
 
 def generate_review(
@@ -20,10 +24,7 @@ def generate_review(
     platform: str = "facebook",
     custom_audience: dict | None = None,
 ) -> dict:
-    """Generate a review + social post for a book targeting a specific audience.
-
-    Returns dict with keys: review, social_post, hashtags, hook
-    """
+    """Generate a review + social post for a book targeting a specific audience."""
     audience = custom_audience or AUDIENCES.get(audience_key, AUDIENCES["phu-huynh-lop-5"])
 
     platform_guide = {
@@ -31,7 +32,6 @@ def generate_review(
         "tiktok": "Script TikTok 60-90 giây. Viết dạng văn nói tự nhiên, KHÔNG dùng timestamp như [0-3s]. Mở đầu bằng hook gây tò mò, ngắn gọn, có nhịp điệu. Viết như đang nói chuyện với người xem.",
     }
 
-    # Build ratings context
     ratings_context = ""
     if book.rating:
         ratings_context += f"\n- Đánh giá: {book.rating}/5 ({book.rating_count} lượt đánh giá)"
@@ -79,25 +79,17 @@ Trả về JSON với format:
 CHỈ trả về JSON, không giải thích thêm."""
 
     try:
-        client = _get_client()
-        resp = client.invoke_model(
-            modelId=BEDROCK_MODEL_ID,
-            contentType="application/json",
-            accept="application/json",
-            body=json.dumps({
-                "anthropic_version": "bedrock-2023-05-31",
-                "max_tokens": 2000,
-                "messages": [{"role": "user", "content": prompt}],
-            }),
+        resp = _get_model().generate_content(
+            prompt,
+            generation_config=genai.types.GenerationConfig(
+                max_output_tokens=2000,
+                response_mime_type="application/json",
+            ),
         )
     except Exception as e:
-        raise RuntimeError(f"Bedrock API error: {e}") from e
+        raise RuntimeError(f"Gemini API error: {e}") from e
 
-    result = json.loads(resp["body"].read())
-    text = result["content"][0]["text"]
-
-    # Parse JSON from response (handle markdown code blocks)
-    text = text.strip()
+    text = resp.text.strip()
     if text.startswith("```"):
         text = text.split("\n", 1)[1].rsplit("```", 1)[0]
 

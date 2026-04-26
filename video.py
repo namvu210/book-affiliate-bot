@@ -90,26 +90,16 @@ def _split_sentences(text: str) -> list[str]:
 
 
 def _draw_text_with_emoji(draw, xy, text, fill, font, font_size):
-    """Draw text with emoji support — uses main font for text, Noto Emoji for emoji."""
+    """Draw text with color emoji using pilmoji."""
     try:
-        emoji_font = ImageFont.truetype(EMOJI_FONT_PATH, font_size)
-    except Exception:
+        from pilmoji import Pilmoji
+        # pilmoji needs the actual Image, not ImageDraw
+        # We draw onto the draw's image directly
+        img = draw._image
+        with Pilmoji(img) as pmj:
+            pmj.text(xy, text, fill=fill, font=font)
+    except ImportError:
         draw.text(xy, text, fill=fill, font=font)
-        return
-
-    x, y = xy
-    parts = EMOJI_RE.split(text)
-    emojis = EMOJI_RE.findall(text)
-
-    for i, part in enumerate(parts):
-        if part:
-            draw.text((x, y), part, fill=fill, font=font)
-            bbox = draw.textbbox((0, 0), part, font=font)
-            x += bbox[2] - bbox[0]
-        if i < len(emojis):
-            draw.text((x, y), emojis[i], fill=fill, font=emoji_font)
-            bbox = draw.textbbox((0, 0), emojis[i], font=emoji_font)
-            x += bbox[2] - bbox[0]
 
 
 def _get_duration(path: str) -> float:
@@ -195,13 +185,22 @@ def _draw_karaoke(
         radius=20, fill=(0, 0, 0, 160),
     )
 
+    # Composite the dark pill overlay first
+    img = Image.alpha_composite(img, overlay)
+
+    # Now draw text with color emoji directly on the composited image
+    txt_img = img.convert("RGB")
     y = text_y
     for line in lines:
-        _draw_text_with_emoji(odraw, (pad + 2, y + 2), line, fill=(0, 0, 0, 200), font=font, font_size=48)
-        _draw_text_with_emoji(odraw, (pad, y), line, fill=(255, 255, 255, 255), font=font, font_size=48)
+        # Shadow
+        _draw_text_with_emoji(ImageDraw.Draw(txt_img), (pad + 2, y + 2), line,
+                              fill=(0, 0, 0), font=font, font_size=48)
+        # Main text
+        _draw_text_with_emoji(ImageDraw.Draw(txt_img), (pad, y), line,
+                              fill=(255, 255, 255), font=font, font_size=48)
         y += 58
 
-    return Image.alpha_composite(img, overlay).convert("RGB")
+    return txt_img
 
 
 def generate_tiktok_video(

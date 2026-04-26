@@ -11,7 +11,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from config import AUDIENCES, OUTPUT_DIR, UPLOAD_DIR, BEDROCK_MODEL_ID
+from config import AUDIENCES, OUTPUT_DIR, UPLOAD_DIR, GEMINI_MODEL
 from extractor import BookInfo, extract_from_pdf, extract_from_shopee, download_images
 from reviewer import generate_review, generate_review_all_platforms
 from tts import generate_audio
@@ -39,30 +39,28 @@ async def home(request: Request):
 @app.post("/suggest-personas")
 async def suggest_personas(title: str = Form(...)):
     """Use LLM to suggest 3 customer personas for a product."""
-    from reviewer import _get_client
-    client = _get_client()
-    resp = client.invoke_model(
-        modelId=BEDROCK_MODEL_ID,
-        contentType="application/json",
-        accept="application/json",
-        body=json.dumps({
-            "anthropic_version": "bedrock-2023-05-31",
-            "max_tokens": 500,
-            "messages": [{"role": "user", "content": f"""Dựa vào sản phẩm "{title}", gợi ý 3 nhóm khách hàng mục tiêu phù hợp nhất.
+    from reviewer import _get_model
+    import google.generativeai as genai
+    resp = _get_model().generate_content(
+        f"""Dựa vào sản phẩm "{title}", gợi ý 3 nhóm khách hàng mục tiêu phù hợp nhất.
 
 Trả về JSON array, mỗi phần tử có:
 - "name": tên nhóm khách hàng (ngắn gọn, tiếng Việt)
 - "tone": giọng văn phù hợp
 - "focus": trọng tâm nội dung khi viết review
 
-CHỈ trả về JSON array, không giải thích."""}],
-        }),
+CHỈ trả về JSON array, không giải thích.""",
+        generation_config=genai.types.GenerationConfig(
+            max_output_tokens=500,
+            response_mime_type="application/json",
+        ),
     )
-    text = json.loads(resp["body"].read())["content"][0]["text"].strip()
+    text = resp.text.strip()
     if text.startswith("```"):
         text = text.split("\n", 1)[1].rsplit("```", 1)[0]
     try:
-        personas = json.loads(text)
+        parsed = json.loads(text)
+        personas = parsed if isinstance(parsed, list) else parsed.get("personas", [])
     except json.JSONDecodeError:
         personas = []
     return {"personas": personas}
