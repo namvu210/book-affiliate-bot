@@ -6,3 +6,5 @@ uploads/
 /tmp/
 server.log
 .env
+voices/
+templates_video/

@@ -43,14 +43,32 @@
     <h1>📚 Book Affiliate Bot</h1>
     <p class="subtitle">Upload sách PDF hoặc dán link Shopee → Tự động tạo review & bài đăng</p>
 
+    <div style="background:#fff;padding:12px 20px;border-radius:8px;margin-bottom:16px;box-shadow:0 2px 8px rgba(0,0,0,.06)">
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+            <span style="font-size:.9em">🎙️ Voice Clone:</span>
+            <span id="voice-badge" style="font-size:.85em;color:#666">Đang kiểm tra...</span>
+        </div>
+        <div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin-top:8px">
+            <div>
+                <label style="font-size:.8em;color:#666">File giọng (6-30s):</label>
+                <input type="file" id="voice-file" accept="audio/*,.wav,.mp3,.m4a" style="font-size:.85em">
+            </div>
+            <div style="flex:1;min-width:200px">
+                <label style="font-size:.8em;color:#666">Nội dung đang nói trong file:</label>
+                <input type="text" id="voice-ref-text" placeholder="Gõ lại nội dung trong file giọng mẫu..." style="padding:6px 10px;border:1.5px solid #ddd;border-radius:6px;width:100%;font-size:.85em">
+            </div>
+            <button class="btn" onclick="uploadVoice()" style="padding:6px 16px;font-size:.85em">💾 Lưu</button>
+        </div>
+    </div>
+
     <div class="tabs">
-        <button class="tab active" onclick="switchTab('pdf')">📄 Upload PDF</button>
-        <button class="tab" onclick="switchTab('url')">🔗 Link Shopee</button>
-        <button class="tab" onclick="switchTab('manual')">✏️ Nhập tay</button>
+        <button class="tab" data-tab="pdf" onclick="switchTab('pdf')">📄 Upload PDF</button>
+        <button class="tab active" data-tab="url" onclick="switchTab('url')">🔗 Link Shopee</button>
+        <button class="tab" data-tab="manual" onclick="switchTab('manual')">✏️ Nhập tay</button>
     </div>
 
     <!-- PDF Upload -->
-    <div id="panel-pdf" class="panel active">
+    <div id="panel-pdf" class="panel">
         <form id="form-pdf" enctype="multipart/form-data">
             <label>File PDF sách:</label>
             <input type="file" name="file" accept=".pdf" required>
@@ -60,12 +78,14 @@
                 <option value="{{ key }}">{{ val.name }}</option>
                 {% endfor %}
             </select>
+            <label>Độ dài review: <span id="wc-pdf-val">150</span> từ</label>
+            <input type="range" name="word_count" min="50" max="200" value="150" oninput="document.getElementById('wc-pdf-val').textContent=this.value">
             <button type="submit" class="btn">🚀 Tạo Review</button>
         </form>
     </div>
 
     <!-- Shopee URL -->
-    <div id="panel-url" class="panel">
+    <div id="panel-url" class="panel active">
         <form id="form-url" enctype="multipart/form-data">
             <label>Link sản phẩm Shopee:</label>
             <div style="display:flex;gap:8px">
@@ -74,11 +94,9 @@
             </div>
             <label>Link affiliate (tuỳ chọn):</label>
             <input type="url" name="affiliate_url" placeholder="https://s.shopee.vn/... (link affiliate của bạn)">
-            <label>Ảnh/Video sản phẩm (tải từ <a href="https://chromewebstore.google.com/detail/shopee-save-download-prod/likamafaejphcadlcclbnjddckicmblo" target="_blank">Shopee Save extension</a>):</label>
-            <input type="file" name="media" accept="image/*,video/*" multiple>
             <label>Đối tượng khách hàng:</label>
             <div id="persona-list">
-                <select name="audience" id="audience-select">
+                <select name="audience" id="audience-select" onchange="document.getElementById('custom-persona').style.display=this.value==='custom'?'block':'none'">
                     {% for key, val in audiences.items() %}
                     <option value="{{ key }}">{{ val.name }}</option>
                     {% endfor %}
@@ -91,6 +109,8 @@
                 <input type="text" id="cp-focus" placeholder="Trọng tâm (VD: giá rẻ, tiện lợi)" >
             </div>
             <input type="hidden" name="custom_audience" id="custom-audience-json" value="">
+            <label>Độ dài review: <span id="wc-url-val">150</span> từ</label>
+            <input type="range" name="word_count" min="50" max="200" value="150" oninput="document.getElementById('wc-url-val').textContent=this.value">
             <button type="submit" class="btn">🚀 Tạo Review</button>
         </form>
     </div>
@@ -128,10 +148,16 @@
 
 <script>
 function switchTab(name) {
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-    event.target.classList.add('active');
-    document.getElementById('panel-' + name).classList.add('active');
+    // Remove active from all tabs and panels
+    var tabs = document.getElementsByClassName('tab');
+    for (var i = 0; i < tabs.length; i++) tabs[i].className = 'tab';
+    var panels = document.getElementsByClassName('panel');
+    for (var i = 0; i < panels.length; i++) panels[i].className = 'panel';
+    // Activate selected
+    var tab = document.querySelector('[data-tab="' + name + '"]');
+    if (tab) tab.className = 'tab active';
+    var panel = document.getElementById('panel-' + name);
+    if (panel) panel.className = 'panel active';
 }
 
 function copyText(id) {
@@ -147,6 +173,7 @@ async function generateSpeech(platform) {
     const textarea = document.getElementById('post-' + platform);
     const text = textarea.value.trim();
     if (!text) { alert('Nhập nội dung trước!'); return; }
+    const voiceType = document.getElementById('voice-' + platform)?.value || 'gtts';
     const btn = document.getElementById('btn-speech-' + platform);
     const audioDiv = document.getElementById('audio-' + platform);
     btn.disabled = true;
@@ -155,11 +182,11 @@ async function generateSpeech(platform) {
         const fd = new FormData();
         fd.append('text', text);
         fd.append('platform', platform);
+        fd.append('voice_type', voiceType);
         const resp = await fetch('/generate-speech', { method: 'POST', body: fd });
         if (!resp.ok) { const err = await resp.json(); throw new Error(err.detail || 'Lỗi'); }
         const data = await resp.json();
         audioDiv.innerHTML = `<audio controls style="height:36px"><source src="${data.audio_url}" type="audio/mpeg"></audio><a href="${data.audio_url}" download style="font-size:.85em;margin-left:4px">⬇️</a>`;
-        // Update the review data so video generation uses the new audio
         if (window._lastReviewData && window._lastReviewData[platform]) {
             window._lastReviewData[platform].audio_url = data.audio_url;
             window._lastReviewData[platform].social_post = text;
@@ -170,6 +197,61 @@ async function generateSpeech(platform) {
         btn.disabled = false;
         btn.textContent = '🔊 Tạo giọng nói';
     }
+}
+
+async function uploadVoice() {
+    const file = document.getElementById('voice-file').files[0];
+    if (!file) { alert('Chọn file giọng mẫu trước!'); return; }
+    const refText = document.getElementById('voice-ref-text').value.trim();
+    const badge = document.getElementById('voice-badge');
+    badge.textContent = '⏳ Đang upload...';
+    try {
+        const fd = new FormData();
+        fd.append('file', file);
+        fd.append('ref_text', refText);
+        const resp = await fetch('/upload-voice', { method: 'POST', body: fd });
+        const data = await resp.json();
+        badge.textContent = resp.ok ? '✅ Đã lưu mẫu giọng' : '❌ Lỗi';
+    } catch(e) { badge.textContent = '❌ ' + e.message; }
+}
+fetch('/api/voice-status').then(r=>r.json()).then(d=>{
+    document.getElementById('voice-badge').textContent = d.has_voice ? '✅ Đã có mẫu giọng' : '⚠️ Upload WAV/MP3 (6-30s) để clone giọng';
+}).catch(()=>{});
+
+function previewUploads(input) {
+    const preview = document.getElementById('upload-preview');
+    preview.innerHTML = '';
+    const dt = new DataTransfer();
+    Array.from(input.files).forEach((file, i) => {
+        dt.items.add(file);
+        const div = document.createElement('div');
+        div.style.cssText = 'position:relative;display:inline-block';
+        if (file.type.startsWith('video/')) {
+            const vid = document.createElement('video');
+            vid.src = URL.createObjectURL(file);
+            vid.style.cssText = 'height:80px;border-radius:6px';
+            vid.controls = true;
+            div.appendChild(vid);
+        } else {
+            const img = document.createElement('img');
+            img.src = URL.createObjectURL(file);
+            img.style.cssText = 'height:80px;border-radius:6px';
+            div.appendChild(img);
+        }
+        const btn = document.createElement('button');
+        btn.textContent = '✕';
+        btn.style.cssText = 'position:absolute;top:-6px;right:-6px;background:#e94560;color:#fff;border:none;border-radius:50%;width:20px;height:20px;cursor:pointer;font-size:12px;line-height:20px;padding:0';
+        btn.onclick = () => { div.remove(); removeFile(input, i); };
+        div.appendChild(btn);
+        preview.appendChild(div);
+    });
+}
+
+function removeFile(input, index) {
+    const dt = new DataTransfer();
+    Array.from(input.files).forEach((f, i) => { if (i !== index) dt.items.add(f); });
+    input.files = dt.files;
+    previewUploads(input);
 }
 
 function renderResult(data) {
@@ -232,6 +314,12 @@ function renderResult(data) {
             </h3>
             <textarea id="post-${p||'single'}" rows="10" style="width:100%;padding:12px;border:1.5px solid #ddd;border-radius:8px;font-size:.9em;line-height:1.6;font-family:inherit;resize:vertical">${postText}</textarea>
             <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                <select id="voice-${p||'single'}" style="padding:6px 10px;border-radius:6px;border:1.5px solid #ddd;font-size:.85em">
+                    <option value="gtts">🤖 gTTS (nhanh)</option>
+                    <option value="vieneu">🇻🇳 VieNeu (tự nhiên)</option>
+                    <option value="vieneu-clone">🎙️ Clone giọng (VieNeu)</option>
+                    <option value="elevenlabs">🎙️ Clone giọng (ElevenLabs) — chưa cài đặt</option>
+                </select>
                 <button class="btn" onclick="generateSpeech('${p||'single'}')" id="btn-speech-${p||'single'}" style="padding:8px 20px;font-size:.9em">
                     🔊 Tạo giọng nói
                 </button>
@@ -257,38 +345,185 @@ function renderResult(data) {
 
     // Video generation section
     if (data.tiktok || data.facebook) {
-        const imgs = data.product_images || [];
+        const vidImgs = data.product_images || [];
         html += `<div class="result-card">
-            <h3>🎬 Tạo Video (~30 giây)</h3>
-            <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px">
+            <h3>🎬 Tạo Video</h3>
+            <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
                 <select id="video-platform" style="padding:8px 12px;border-radius:8px;border:1.5px solid #ddd">
                     ${data.tiktok ? '<option value="tiktok">🎵 TikTok</option>' : ''}
                     ${data.facebook ? '<option value="facebook">📘 Facebook Reels</option>' : ''}
+                    <option value="tiktok">📺 YouTube Shorts</option>
+                </select>
+                <select id="video-aspect" style="padding:8px 12px;border-radius:8px;border:1.5px solid #ddd">
+                    <option value="9:16">📱 9:16 (TikTok/Reels)</option>
+                    <option value="1:1">⬜ 1:1 (Instagram)</option>
+                    <option value="16:9">🖥️ 16:9 (YouTube)</option>
                 </select>
             </div>
-            ${imgs.length > 0 ? `
-                <p style="font-size:.85em;color:#666;margin-bottom:8px">Chọn tối đa 4 ảnh cho video:</p>
-                <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px">
-                    ${imgs.map((img, i) => `
+            <div style="display:flex;gap:20px;margin-bottom:12px;flex-wrap:wrap">
+                <label style="font-size:.85em;display:flex;align-items:center;gap:6px">
+                    ⏱️ Thời lượng: <span id="dur-val">30</span>s
+                    <input type="range" id="video-duration" min="15" max="60" value="30" step="5" style="width:100px" oninput="document.getElementById('dur-val').textContent=this.value">
+                </label>
+                <label style="font-size:.85em;display:flex;align-items:center;gap:6px">
+                    🔊 Nhạc nền: <span id="vol-val">15</span>%
+                    <input type="range" id="music-volume" min="0" max="50" value="15" step="5" style="width:100px" oninput="document.getElementById('vol-val').textContent=this.value">
+                </label>
+                <label style="font-size:.85em;display:flex;align-items:center;gap:6px">
+                    🗣️ Tốc độ giọng: <span id="voice-speed-val">75</span>%
+                    <input type="range" id="voice-speed" min="0" max="150" value="75" step="25" style="width:100px" oninput="document.getElementById('voice-speed-val').textContent=this.value">
+                </label>
+                <label style="font-size:.85em;display:flex;align-items:center;gap:6px">
+                    🖼️ Chuyển ảnh: <span id="img-speed-val">3</span>s
+                    <input type="range" id="img-transition" min="1" max="10" value="3" step="1" style="width:100px" oninput="document.getElementById('img-speed-val').textContent=this.value">
+                </label>
+            </div>
+            <div style="display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap">
+                <label style="font-size:.85em">🎨 Kiểu phụ đề:
+                    <select id="subtitle-style" style="padding:6px 10px;border-radius:6px;border:1.5px solid #ddd;font-size:.85em">
+                        <option value="tiktok">TikTok (viền vàng)</option>
+                        <option value="news">Tin tức (nền đen)</option>
+                        <option value="karaoke">Karaoke (đổi màu)</option>
+                        <option value="minimal">Tối giản (trắng)</option>
+                    </select>
+                </label>
+                <label style="font-size:.85em">🎨 Màu highlight:
+                    <input type="color" id="highlight-color" value="#FFD700" style="width:32px;height:28px;border:none;cursor:pointer;vertical-align:middle">
+                </label>
+                <label style="font-size:.85em">🖼️ Hiệu ứng ảnh:
+                    <select id="img-effect" style="padding:6px 10px;border-radius:6px;border:1.5px solid #ddd;font-size:.85em">
+                        <optgroup label="Chuyển động">
+                            <option value="ken_burns">Ken Burns (zoom+pan)</option>
+                            <option value="slide_lr">Trượt ngang</option>
+                            <option value="slide_ud">Trượt dọc</option>
+                            <option value="bounce_zoom">Zoom nhịp điệu</option>
+                        </optgroup>
+                        <optgroup label="Màu sắc">
+                            <option value="none">Không hiệu ứng</option>
+                            <option value="grayscale">Đen trắng</option>
+                            <option value="sepia">Sepia/Vintage</option>
+                            <option value="saturation">Màu rực rỡ</option>
+                            <option value="contrast">Tương phản cao</option>
+                            <option value="color_tint">Phủ màu</option>
+                            <option value="color_pop">Color Pop (giữ 1 màu)</option>
+                        </optgroup>
+                        <optgroup label="Hiệu ứng đặc biệt">
+                            <option value="blur_bg">Blur nền</option>
+                            <option value="brightness">Sáng hơn</option>
+                            <option value="darken">Tối hơn</option>
+                            <option value="vignette">Vignette (tối viền)</option>
+                            <option value="soft_glow">Soft Glow (mờ ảo)</option>
+                            <option value="mirror">Gương phản chiếu</option>
+                            <option value="pixelate_reveal">Pixelate → Rõ nét</option>
+                            <option value="split_screen">Chia đôi màn hình</option>
+                        </optgroup>
+                    </select>
+                </label>
+            </div>
+            <div style="display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
+                <label style="font-size:.85em;display:flex;align-items:center;gap:4px">
+                    <input type="checkbox" id="show-intro" checked> 📌 Intro
+                    <input type="file" id="intro-bg" accept="image/*" style="font-size:.8em;max-width:150px">
+                </label>
+                <label style="font-size:.85em;display:flex;align-items:center;gap:4px">
+                    <input type="checkbox" id="show-outro" checked> 📢 Outro
+                    <input type="file" id="outro-bg" accept="image/*" style="font-size:.8em;max-width:150px">
+                </label>
+            </div>
+            ${vidImgs.length > 0 ? `
+                <p style="font-size:.85em;color:#666;margin-bottom:8px">Chọn tối đa 8 ảnh cho video:</p>
+                <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px" id="vid-img-gallery">
+                    ${vidImgs.map((img, i) => `
                         <label style="position:relative;cursor:pointer">
-                            <input type="checkbox" class="vid-img-check" value="${img}" ${i < 4 ? 'checked' : ''}
+                            <input type="checkbox" class="vid-img-check" value="${img}" checked
                                    style="position:absolute;top:4px;left:4px;width:18px;height:18px;z-index:2"
                                    onchange="limitVideoImages(this)">
-                            <img src="${img}" style="height:100px;border-radius:6px;border:2px solid ${i < 4 ? '#e94560' : 'transparent'}"
-                                 onclick="this.previousElementSibling.click()">
+                            <img src="${img}" style="height:100px;border-radius:6px;border:2px solid #e94560">
+                            <button type="button" onclick="removeVidImg(this.parentElement)" style="position:absolute;top:-6px;right:-6px;background:#e94560;color:#fff;border:none;border-radius:50%;width:20px;height:20px;cursor:pointer;font-size:12px;line-height:20px;padding:0;z-index:3">✕</button>
                         </label>
                     `).join('')}
                 </div>
-            ` : ''}
+            ` : '<p style="font-size:.85em;color:#999;margin-bottom:8px">Chưa có ảnh — upload ảnh ở trên hoặc thêm bên dưới</p>'}
             <label style="font-weight:normal;font-size:.85em;color:#666">Hoặc upload thêm ảnh/video:
-                <input type="file" id="video-media-upload" accept="image/*,video/*" multiple style="margin-left:8px">
+                <input type="file" id="video-media-upload" accept="image/*,video/*" multiple style="margin-left:8px" onchange="previewVideoUploads(this)">
             </label>
-            <button class="btn" id="btn-video" onclick="generateVideo()" style="background:#16213e;font-size:1.1em;padding:14px 36px">
-                🎬 Tạo Video
-            </button>
-            <div id="video-result" style="margin-top:16px"></div>
+            <div id="video-upload-preview" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px"></div>
+            <label style="font-weight:normal;font-size:.85em;color:#666;margin-top:6px;display:block">🏷️ Logo/Watermark:
+                <input type="file" id="video-logo" accept="image/*" style="margin-left:8px">
+                <select id="logo-position" style="padding:4px 8px;border-radius:6px;border:1px solid #ddd;font-size:.85em;margin-left:4px">
+                    <option value="top-right">↗ Trên phải</option>
+                    <option value="top-left">↖ Trên trái</option>
+                    <option value="bottom-right">↘ Dưới phải</option>
+                    <option value="bottom-left">↙ Dưới trái</option>
+                </select>
+            </label>
+            <div style="margin-top:12px">
+                <label style="font-weight:600">🎵 Nhạc nền:</label>
+                <div style="display:flex;gap:8px;align-items:center;margin-top:4px;flex-wrap:wrap">
+                    <select id="music-source" onchange="loadMusicList()" style="padding:8px 12px;border-radius:8px;border:1.5px solid #ddd">
+                        <option value="freesound">🔊 Freesound</option>
+                        <option value="jamendo">🎶 Jamendo</option>
+                    </select>
+                    <select id="music-category" onchange="loadMusicList(this.value)" style="padding:8px 12px;border-radius:8px;border:1.5px solid #ddd">
+                        <option value="">Thể loại</option>
+                    </select>
+                    <input type="text" id="music-search" placeholder="Tìm nhạc..." style="padding:8px 12px;border-radius:8px;border:1.5px solid #ddd;width:120px" onkeydown="if(event.key==='Enter'){event.preventDefault();loadMusicList('',this.value)}">
+                    <select id="music-select" style="padding:8px 12px;border-radius:8px;border:1.5px solid #ddd;flex:1">
+                        <option value="">Không nhạc nền</option>
+                    </select>
+                    <button type="button" onclick="previewMusic()" style="padding:6px 12px;border:1.5px solid #ddd;border-radius:8px;background:#fff;cursor:pointer">▶</button>
+                    <button type="button" onclick="stopMusic()" style="padding:6px 12px;border:1.5px solid #ddd;border-radius:8px;background:#fff;cursor:pointer">⏹</button>
+                    <button type="button" onclick="loadMusicList('','',true)" style="padding:6px 12px;border:1.5px solid #ddd;border-radius:8px;background:#fff;cursor:pointer" title="Đổi nhạc mới">🔄</button>
+                </div>
+                <div style="display:flex;gap:8px;align-items:center;margin-top:6px">
+                    <input type="text" id="custom-music-url" placeholder="Hoặc dán link nhạc MP3..." style="padding:6px 10px;border-radius:6px;border:1.5px solid #ddd;flex:1;font-size:.85em">
+                    <input type="file" id="custom-music-file" accept="audio/*,.mp3" style="font-size:.8em;max-width:180px">
+                </div>
+                <audio id="music-preview" style="display:none"></audio>
+            </div>
+            <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap;align-items:center">
+                <button class="btn" id="btn-preview" onclick="previewVideo()" style="background:#0f3460;padding:12px 24px">
+                    👁️ Xem trước
+                </button>
+                <button class="btn" id="btn-video" onclick="generateVideo()" style="background:#16213e;font-size:1.1em;padding:14px 36px">
+                    🎬 Tạo Video
+                </button>
+                <button class="btn" id="btn-batch" onclick="batchGenerate()" style="background:#6a0572;padding:12px 24px">
+                    📦 Tạo tất cả (TikTok + Reels + YouTube)
+                </button>
+            </div>
+            <div id="preview-result" style="margin-top:12px"></div>
+            <div id="video-result" style="margin-top:12px"></div>
+
+            <!-- Template System -->
+            <div style="margin-top:16px;padding-top:12px;border-top:1px solid #eee">
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                    <span style="font-size:.85em;font-weight:600">💾 Templates:</span>
+                    <input type="text" id="template-name" placeholder="Tên template..." style="padding:6px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:.85em;width:150px">
+                    <button class="btn" onclick="saveTemplate()" style="padding:6px 14px;font-size:.8em">Lưu</button>
+                    <select id="template-list" style="padding:6px 10px;border-radius:6px;border:1.5px solid #ddd;font-size:.85em">
+                        <option value="">Chọn template...</option>
+                    </select>
+                    <button class="btn" onclick="loadTemplate()" style="padding:6px 14px;font-size:.8em;background:#0f3460">Tải</button>
+                    <button class="btn" onclick="deleteTemplate()" style="padding:6px 14px;font-size:.8em;background:#666">Xóa</button>
+                </div>
+            </div>
+
+            <!-- Auto-cut Video -->
+            <div style="margin-top:12px;padding-top:12px;border-top:1px solid #eee">
+                <span style="font-size:.85em;font-weight:600">✂️ Auto-cut video sản phẩm:</span>
+                <div style="display:flex;gap:8px;align-items:center;margin-top:6px">
+                    <input type="file" id="autocut-video" accept="video/*" style="font-size:.85em">
+                    <button class="btn" onclick="autoCutVideo()" style="padding:6px 14px;font-size:.8em;background:#0f3460">✂️ Cắt</button>
+                    <span id="autocut-status" style="font-size:.85em;color:#666"></span>
+                </div>
+                <div id="autocut-result" style="margin-top:8px"></div>
+            </div>
+
         </div>`;
         window._lastReviewData = data;
+        loadMusicList();
+        loadTemplateList();
     }
 
     r.innerHTML = html;
@@ -338,40 +573,34 @@ document.getElementById('form-url').addEventListener('submit', e => {
     submitForm('/from-url', new FormData(e.target));
 });
 
-// Show/hide custom persona fields
-document.addEventListener('change', e => {
-    if (e.target.id === 'audience-select') {
-        document.getElementById('custom-persona').style.display = e.target.value === 'custom' ? 'block' : 'none';
-    }
-});
-
 async function suggestPersonas() {
     const urlInput = document.querySelector('#panel-url input[name="url"]');
     const url = urlInput?.value?.trim();
     if (!url) { alert('Nhập link Shopee trước!'); return; }
-    // Extract title from URL
     const slug = decodeURIComponent(url.split('shopee.vn/')[1] || '').split('-i.')[0].replace(/-/g, ' ');
     const sel = document.getElementById('audience-select');
-    sel.innerHTML = '<option disabled>⏳ Đang gợi ý...</option>';
+    sel.innerHTML = '<option disabled selected>⏳ Đang gợi ý...</option>';
     try {
         const fd = new FormData();
         fd.append('title', slug);
         const resp = await fetch('/suggest-personas', { method: 'POST', body: fd });
+        if (!resp.ok) throw new Error('API error');
         const data = await resp.json();
         let opts = '';
         (data.personas || []).forEach((p, i) => {
-            opts += `<option value="suggested-${i}" data-persona='${JSON.stringify(p).replace(/'/g,"&#39;")}'>🎯 ${p.name}</option>`;
+            const pJson = JSON.stringify(p).replace(/'/g, '&#39;').replace(/"/g, '&quot;');
+            opts += `<option value="suggested-${i}" data-persona="${pJson}" ${i===0?'selected':''}>🎯 ${p.name}</option>`;
         });
-        // Add default audiences back
         opts += `<optgroup label="── Mặc định ──">`;
-        document.querySelectorAll('#form-pdf select[name="audience"] option').forEach(o => {
-            opts += `<option value="${o.value}">${o.textContent}</option>`;
-        });
+        opts += `<option value="phu-huynh-lop-5">Phụ huynh có con lớp 5</option>`;
+        opts += `<option value="phu-huynh-mam-non">Phụ huynh có con mầm non</option>`;
+        opts += `<option value="hoc-sinh-thpt">Học sinh THPT</option>`;
         opts += `</optgroup>`;
         opts += `<option value="custom">✏️ Tự nhập...</option>`;
         sel.innerHTML = opts;
+        document.getElementById('custom-persona').style.display = 'none';
     } catch(e) {
-        sel.innerHTML = `{% for key, val in audiences.items() %}<option value="{{ key }}">{{ val.name }}</option>{% endfor %}<option value="custom">✏️ Tự nhập...</option>`;
+        sel.innerHTML = `<option value="phu-huynh-lop-5">Phụ huynh có con lớp 5</option><option value="phu-huynh-mam-non">Phụ huynh có con mầm non</option><option value="hoc-sinh-thpt">Học sinh THPT</option><option value="custom">✏️ Tự nhập...</option>`;
     }
 }
 
@@ -451,60 +680,397 @@ function downloadSelectedImages() {
     });
 }
 
+async function loadMusicList(category, query, refresh) {
+    try {
+        const q = query || document.getElementById('music-search')?.value || '';
+        const cat = category || '';
+        const src = document.getElementById('music-source')?.value || 'freesound';
+        const r = refresh ? '&refresh=true' : '';
+        const resp = await fetch(`/api/music?category=${encodeURIComponent(cat)}&q=${encodeURIComponent(q)}&source=${src}${r}`);
+        const data = await resp.json();
+        const sel = document.getElementById('music-select');
+        const catSel = document.getElementById('music-category');
+        if (!sel) return;
+        sel.innerHTML = '<option value="">Không nhạc nền</option>';
+        if (data.error) {
+            sel.innerHTML += `<option disabled>⚠️ ${data.error}</option>`;
+        }
+        (data.tracks || []).forEach(t => {
+            const opt = document.createElement('option');
+            opt.value = t.url;
+            opt.textContent = `🎵 ${t.name}${t.duration ? ' (' + Math.round(t.duration) + 's)' : ''}`;
+            sel.appendChild(opt);
+        });
+        if (catSel.options.length <= 1 && data.categories) {
+            data.categories.forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c;
+                opt.textContent = c.charAt(0).toUpperCase() + c.slice(1);
+                catSel.appendChild(opt);
+            });
+        }
+    } catch(e) {}
+}
+
+function previewMusic() {
+    const sel = document.getElementById('music-select');
+    const audio = document.getElementById('music-preview');
+    if (!sel.value) { audio.pause(); return; }
+    audio.src = sel.value;
+    audio.style.display = 'block';
+    audio.style.width = '100%';
+    audio.style.marginTop = '8px';
+    audio.play();
+}
+
+function stopMusic() {
+    const audio = document.getElementById('music-preview');
+    audio.pause();
+    audio.currentTime = 0;
+}
+
 function limitVideoImages(cb) {
     const checked = document.querySelectorAll('.vid-img-check:checked');
-    if (checked.length > 4) { cb.checked = false; return; }
-    // Update border highlight
+    if (checked.length > 8) { cb.checked = false; return; }
     document.querySelectorAll('.vid-img-check').forEach(c => {
         const img = c.nextElementSibling;
         if (img) img.style.borderColor = c.checked ? '#e94560' : 'transparent';
     });
 }
 
+function removeVidImg(label) {
+    label.remove();
+}
+
+function previewVideoUploads(input) {
+    var preview = document.getElementById('video-upload-preview');
+    preview.innerHTML = '';
+    Array.from(input.files).forEach(function(file, i) {
+        var div = document.createElement('div');
+        div.style.cssText = 'position:relative;display:inline-block';
+        if (file.type.startsWith('video/')) {
+            var vid = document.createElement('video');
+            vid.src = URL.createObjectURL(file);
+            vid.style.cssText = 'height:80px;border-radius:6px';
+            vid.controls = true;
+            div.appendChild(vid);
+        } else {
+            var img = document.createElement('img');
+            img.src = URL.createObjectURL(file);
+            img.style.cssText = 'height:80px;border-radius:6px;border:2px solid #e94560';
+            div.appendChild(img);
+        }
+        var cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.className = 'vid-upload-check';
+        cb.checked = true;
+        cb.dataset.index = i;
+        cb.style.cssText = 'position:absolute;top:4px;left:4px;width:18px;height:18px;z-index:2';
+        div.insertBefore(cb, div.firstChild);
+        var btn = document.createElement('button');
+        btn.textContent = '✕';
+        btn.style.cssText = 'position:absolute;top:-6px;right:-6px;background:#e94560;color:#fff;border:none;border-radius:50%;width:20px;height:20px;cursor:pointer;font-size:12px;line-height:20px;padding:0;z-index:3';
+        btn.onclick = function() {
+            div.remove();
+            removeVideoFile(input, i);
+        };
+        div.appendChild(btn);
+        preview.appendChild(div);
+    });
+}
+
+function removeVideoFile(input, index) {
+    var dt = new DataTransfer();
+    Array.from(input.files).forEach(function(f, i) { if (i !== index) dt.items.add(f); });
+    input.files = dt.files;
+    previewVideoUploads(input);
+}
+
+function getVideoFormData() {
+    const platform = document.getElementById('video-platform').value;
+    const selected = Array.from(document.querySelectorAll('.vid-img-check:checked')).map(c => c.value);
+    const textarea = document.getElementById('post-' + platform);
+    if (textarea && window._lastReviewData?.[platform]) window._lastReviewData[platform].social_post = textarea.value;
+    const fd = new FormData();
+    fd.append('review_json', JSON.stringify(window._lastReviewData));
+    fd.append('pdf_path', window._lastPdfPath || '');
+    fd.append('platform', platform);
+    fd.append('selected_images', JSON.stringify(selected));
+    fd.append('max_duration', document.getElementById('video-duration')?.value || '30');
+    fd.append('music_volume', document.getElementById('music-volume')?.value || '15');
+    fd.append('aspect_ratio', document.getElementById('video-aspect')?.value || '9:16');
+    fd.append('voice_speed', document.getElementById('voice-speed')?.value || '75');
+    fd.append('img_transition', document.getElementById('img-transition')?.value || '3');
+    fd.append('subtitle_style', document.getElementById('subtitle-style')?.value || 'tiktok');
+    fd.append('highlight_color', document.getElementById('highlight-color')?.value || '#FFD700');
+    fd.append('img_effect', document.getElementById('img-effect')?.value || 'ken_burns');
+    fd.append('show_intro', document.getElementById('show-intro')?.checked ? '1' : '0');
+    fd.append('show_outro', document.getElementById('show-outro')?.checked ? '1' : '0');
+    const introBg = document.getElementById('intro-bg')?.files?.[0];
+    if (introBg) fd.append('intro_bg', introBg);
+    const outroBg = document.getElementById('outro-bg')?.files?.[0];
+    if (outroBg) fd.append('outro_bg', outroBg);
+    const logoFile = document.getElementById('video-logo')?.files?.[0];
+    if (logoFile) fd.append('logo', logoFile);
+    fd.append('logo_position', document.getElementById('logo-position')?.value || 'top-right');
+    const musicSel = document.getElementById('music-select');
+    const customUrl = document.getElementById('custom-music-url')?.value?.trim();
+    const customFile = document.getElementById('custom-music-file')?.files?.[0];
+    if (customFile) fd.append('music_upload', customFile);
+    else if (customUrl) fd.append('music_file', customUrl);
+    else if (musicSel?.value) fd.append('music_file', musicSel.value);
+    const uploadEl = document.getElementById('video-media-upload');
+    if (uploadEl?.files) {
+        const checked = new Set();
+        document.querySelectorAll('.vid-upload-check:checked').forEach(cb => checked.add(parseInt(cb.dataset.index)));
+        for (let i = 0; i < Math.min(uploadEl.files.length, 8); i++) {
+            if (checked.size === 0 || checked.has(i)) fd.append('media', uploadEl.files[i]);
+        }
+    }
+    document.getElementById('music-preview')?.pause();
+    return { fd, platform };
+}
+
+async function previewVideo() {
+    const btn = document.getElementById('btn-preview');
+    const pr = document.getElementById('preview-result');
+    btn.disabled = true; btn.textContent = '⏳ Preview...';
+    try {
+        const { fd } = getVideoFormData();
+        fd.append('preview_only', '1');
+        const resp = await fetch('/generate-video', { method: 'POST', body: fd });
+        if (!resp.ok) { const err = await resp.json(); throw new Error(err.detail || 'Lỗi'); }
+        const data = await resp.json();
+        pr.innerHTML = `<img src="${data.preview_url}" style="max-width:300px;border-radius:12px;border:2px solid #ddd">
+            <p style="font-size:.85em;color:#666;margin-top:4px">Preview — nhấn "Tạo Video" để render</p>`;
+    } catch(e) { pr.innerHTML = `<p style="color:red">❌ ${e.message}</p>`; }
+    finally { btn.disabled = false; btn.textContent = '👁️ Xem trước'; }
+}
+
 async function generateVideo() {
     const btn = document.getElementById('btn-video');
     const vr = document.getElementById('video-result');
-    const platform = document.getElementById('video-platform').value;
-
-    // Get selected images
-    const selected = Array.from(document.querySelectorAll('.vid-img-check:checked')).map(c => c.value);
-
-    // Update review data with latest edited text
-    const textarea = document.getElementById('post-' + platform);
-    if (textarea && window._lastReviewData?.[platform]) {
-        window._lastReviewData[platform].social_post = textarea.value;
-    }
-
-    btn.disabled = true;
-    btn.textContent = '⏳ Đang tạo video...';
-    vr.innerHTML = '';
+    btn.disabled = true; btn.textContent = '⏳ Đang tạo video...'; vr.innerHTML = '';
     try {
-        const fd = new FormData();
-        fd.append('review_json', JSON.stringify(window._lastReviewData));
-        fd.append('pdf_path', window._lastPdfPath || '');
-        fd.append('platform', platform);
-        fd.append('selected_images', JSON.stringify(selected));
-        const uploadEl = document.getElementById('video-media-upload');
-        if (uploadEl?.files) {
-            for (let i = 0; i < Math.min(uploadEl.files.length, 4); i++) {
-                fd.append('media', uploadEl.files[i]);
-            }
-        }
+        const { fd, platform } = getVideoFormData();
         const resp = await fetch('/generate-video', { method: 'POST', body: fd });
         if (!resp.ok) { const err = await resp.json(); throw new Error(err.detail || 'Lỗi'); }
         const data = await resp.json();
         const label = platform === 'facebook' ? 'Facebook Reels' : 'TikTok';
-        vr.innerHTML = `
-            <video controls style="width:100%;max-width:400px;border-radius:12px;margin-top:12px">
-                <source src="${data.video_url}" type="video/mp4">
-            </video>
-            <br><a href="${data.video_url}" download class="btn" style="margin-top:12px;display:inline-block;font-size:.9em">⬇️ Tải Video ${label}</a>`;
-    } catch(e) {
-        vr.innerHTML = `<p style="color:red">❌ ${e.message}</p>`;
-    } finally {
-        btn.disabled = false;
-        btn.textContent = '🎬 Tạo Video';
+        let h = `<video controls style="width:100%;max-width:400px;border-radius:12px"><source src="${data.video_url}" type="video/mp4"></video>
+            <br><a href="${data.video_url}" download class="btn" style="margin-top:8px;display:inline-block;font-size:.9em">⬇️ ${label}</a>`;
+        if (data.srt_url) h += `<br><a href="${data.srt_url}" download style="font-size:.85em;color:#0f3460;margin-top:4px;display:inline-block">📝 Phụ đề SRT</a>`;
+        vr.innerHTML = h;
+    } catch(e) { vr.innerHTML = `<p style="color:red">❌ ${e.message}</p>`; }
+    finally { btn.disabled = false; btn.textContent = '🎬 Tạo Video'; }
+}
+
+// === Template System ===
+async function loadTemplateList() {
+    try {
+        const resp = await fetch('/api/templates');
+        const data = await resp.json();
+        const sel = document.getElementById('template-list');
+        if (!sel) return;
+        sel.innerHTML = '<option value="">Chọn template...</option>';
+        (data.templates || []).forEach(t => {
+            sel.innerHTML += `<option value="${t.name}">${t.name}</option>`;
+        });
+    } catch(e) {}
+}
+
+function getVideoConfig() {
+    return {
+        aspect_ratio: document.getElementById('video-aspect')?.value,
+        duration: document.getElementById('video-duration')?.value,
+        music_volume: document.getElementById('music-volume')?.value,
+        voice_speed: document.getElementById('voice-speed')?.value,
+        img_transition: document.getElementById('img-transition')?.value,
+        subtitle_style: document.getElementById('subtitle-style')?.value,
+        highlight_color: document.getElementById('highlight-color')?.value,
+        img_effect: document.getElementById('img-effect')?.value,
+        show_intro: document.getElementById('show-intro')?.checked,
+        show_outro: document.getElementById('show-outro')?.checked,
+        logo_position: document.getElementById('logo-position')?.value,
+    };
+}
+
+function applyVideoConfig(cfg) {
+    if (!cfg) return;
+    const sets = {
+        'video-aspect': cfg.aspect_ratio, 'video-duration': cfg.duration,
+        'music-volume': cfg.music_volume, 'voice-speed': cfg.voice_speed,
+        'img-transition': cfg.img_transition, 'subtitle-style': cfg.subtitle_style,
+        'highlight-color': cfg.highlight_color, 'img-effect': cfg.img_effect,
+        'logo-position': cfg.logo_position,
+    };
+    for (const [id, val] of Object.entries(sets)) {
+        const el = document.getElementById(id);
+        if (el && val !== undefined) el.value = val;
     }
+    if (cfg.show_intro !== undefined) document.getElementById('show-intro').checked = cfg.show_intro;
+    if (cfg.show_outro !== undefined) document.getElementById('show-outro').checked = cfg.show_outro;
+    // Update display values
+    ['dur-val','vol-val','voice-speed-val','img-speed-val'].forEach(id => {
+        const el = document.getElementById(id);
+        const input = el?.parentElement?.querySelector('input[type=range]');
+        if (el && input) el.textContent = input.value;
+    });
+}
+
+async function saveTemplate() {
+    const name = document.getElementById('template-name')?.value?.trim();
+    if (!name) { alert('Nhập tên template!'); return; }
+    const fd = new FormData();
+    fd.append('name', name);
+    fd.append('config', JSON.stringify(getVideoConfig()));
+    await fetch('/api/templates', { method: 'POST', body: fd });
+    loadTemplateList();
+}
+
+async function loadTemplate() {
+    const name = document.getElementById('template-list')?.value;
+    if (!name) return;
+    const resp = await fetch(`/api/templates/${name}`);
+    const cfg = await resp.json();
+    applyVideoConfig(cfg);
+}
+
+async function deleteTemplate() {
+    const name = document.getElementById('template-list')?.value;
+    if (!name) return;
+    await fetch(`/api/templates/${name}`, { method: 'DELETE' });
+    loadTemplateList();
+}
+
+// === Auto-cut Video ===
+async function autoCutVideo() {
+    const file = document.getElementById('autocut-video')?.files?.[0];
+    if (!file) { alert('Chọn video trước!'); return; }
+    const st = document.getElementById('autocut-status');
+    st.textContent = '⏳ Đang cắt...';
+    try {
+        const fd = new FormData();
+        fd.append('video', file);
+        fd.append('max_duration', document.getElementById('video-duration')?.value || '30');
+        const resp = await fetch('/auto-cut-video', { method: 'POST', body: fd });
+        const data = await resp.json();
+        st.textContent = `✅ ${data.original_duration}s → ${data.cut_duration}s`;
+        document.getElementById('autocut-result').innerHTML = `
+            <video controls style="max-width:300px;border-radius:8px"><source src="${data.video_url}" type="video/mp4"></video>
+            <br><a href="${data.video_url}" download style="font-size:.85em">⬇️ Tải video đã cắt</a>`;
+    } catch(e) { st.textContent = '❌ ' + e.message; }
+}
+
+// === Nova Reel AI Video ===
+function setNovaPrompt(text) {
+    document.getElementById('nova-prompt').value = text;
+}
+
+function previewNovaMedia(input) {
+    var preview = document.getElementById('nova-media-preview');
+    preview.innerHTML = '';
+    // Limit to 8 files
+    if (input.files.length > 8) {
+        alert('Tối đa 8 files!');
+        input.value = '';
+        return;
+    }
+    Array.from(input.files).forEach(function(file, i) {
+        var div = document.createElement('div');
+        div.style.cssText = 'position:relative;display:inline-block';
+        var cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.className = 'nova-media-check';
+        cb.dataset.index = i;
+        cb.style.cssText = 'position:absolute;top:4px;left:4px;width:18px;height:18px;z-index:2';
+        if (i < 2) cb.checked = true;
+        cb.onchange = function() {
+            var checked = document.querySelectorAll('.nova-media-check:checked');
+            if (checked.length > 2) { this.checked = false; alert('Chọn tối đa 2 ảnh/video cho AI!'); }
+        };
+        div.appendChild(cb);
+        if (file.type.startsWith('video/')) {
+            var vid = document.createElement('video');
+            vid.src = URL.createObjectURL(file);
+            vid.style.cssText = 'height:80px;border-radius:6px';
+            vid.controls = true;
+            div.appendChild(vid);
+        } else {
+            var img = document.createElement('img');
+            img.src = URL.createObjectURL(file);
+            img.style.cssText = 'height:80px;border-radius:6px;border:2px solid ' + (i < 2 ? '#6a0572' : 'transparent');
+            div.appendChild(img);
+        }
+        preview.appendChild(div);
+    });
+}
+
+async function novaReelGenerate() {
+    const prompt = document.getElementById('nova-prompt')?.value?.trim();
+    if (!prompt) { alert('Nhập mô tả video!'); return; }
+    const btn = document.getElementById('btn-nova');
+    const nr = document.getElementById('nova-result');
+    btn.disabled = true; btn.textContent = '⏳ Đang tạo (~90s)...';
+    nr.innerHTML = '<p style="font-size:.85em;color:#666">Đang gửi yêu cầu tới Nova Reel...</p>';
+    try {
+        const fd = new FormData();
+        fd.append('prompt', prompt);
+        fd.append('nova_duration', document.getElementById('nova-duration')?.value || '6');
+        const novaInput = document.getElementById('nova-media');
+        if (novaInput?.files) {
+            const checked = new Set();
+            document.querySelectorAll('.nova-media-check:checked').forEach(cb => checked.add(parseInt(cb.dataset.index)));
+            for (let i = 0; i < novaInput.files.length; i++) {
+                if (checked.has(i)) fd.append('nova_media', novaInput.files[i]);
+            }
+        }
+        const resp = await fetch('/nova-reel', { method: 'POST', body: fd });
+        if (!resp.ok) { const err = await resp.json(); throw new Error(err.detail || 'Lỗi'); }
+        const data = await resp.json();
+        nr.innerHTML = `<p style="font-size:.85em;color:#666">⏳ Video đang render... Kiểm tra sau 90 giây.</p>`;
+        // Poll for completion
+        const arn = data.invocation_arn;
+        for (let i = 0; i < 30; i++) {
+            await new Promise(ok => setTimeout(ok, 5000));
+            const sr = await fetch(`/nova-reel-status?arn=${encodeURIComponent(arn)}`);
+            const sd = await sr.json();
+            if (sd.status === 'COMPLETED') {
+                nr.innerHTML = `<p style="color:green">✅ Video tạo xong!</p>
+                    <p style="font-size:.85em">S3: ${sd.s3_uri}</p>
+                    <p style="font-size:.85em;color:#666">Tải video từ S3 console hoặc dùng: aws s3 cp ${sd.s3_uri} ./output/</p>`;
+                break;
+            } else if (sd.status === 'FAILED') {
+                nr.innerHTML = `<p style="color:red">❌ Lỗi: ${sd.error}</p>`;
+                break;
+            }
+            nr.innerHTML = `<p style="font-size:.85em;color:#666">⏳ Đang render... (${(i+1)*5}s)</p>`;
+        }
+    } catch(e) { nr.innerHTML = `<p style="color:red">❌ ${e.message}</p>`; }
+    finally { btn.disabled = false; btn.textContent = '🎬 Tạo AI Video'; }
+}
+
+async function batchGenerate() {
+    const btn = document.getElementById('btn-batch');
+    const vr = document.getElementById('video-result');
+    btn.disabled = true; btn.textContent = '⏳ Đang tạo 3 video...'; vr.innerHTML = '';
+    const configs = [['9:16','tiktok','TikTok'],['9:16','facebook','Reels'],['9:16','tiktok','YouTube Shorts'],['16:9','facebook','YouTube']];
+    let html = '';
+    for (const [aspect, plat, label] of configs) {
+        try {
+            const { fd } = getVideoFormData();
+            fd.set('aspect_ratio', aspect); fd.set('platform', plat);
+            const resp = await fetch('/generate-video', { method: 'POST', body: fd });
+            if (!resp.ok) throw new Error('Lỗi');
+            const data = await resp.json();
+            html += `<div style="display:inline-block;margin:8px;vertical-align:top">
+                <video controls style="max-width:220px;border-radius:8px"><source src="${data.video_url}" type="video/mp4"></video>
+                <br><a href="${data.video_url}" download class="btn" style="font-size:.8em;padding:6px 12px;margin-top:4px;display:inline-block">⬇️ ${label}</a></div>`;
+            vr.innerHTML = html + '<p style="font-size:.85em;color:#666">Đang tạo...</p>';
+        } catch(e) { html += `<p style="color:red;font-size:.85em">❌ ${label}: ${e.message}</p>`; }
+    }
+    vr.innerHTML = html;
+    btn.disabled = false; btn.textContent = '📦 Tạo tất cả';
 }
 </script>
 </body>

@@ -1,13 +1,18 @@
-"""Text-to-speech using gTTS (free, supports Vietnamese)."""
+"""Text-to-speech: gTTS (fast) or VieNeu-TTS (Vietnamese voice clone)."""
 
 import re
 import subprocess
 from pathlib import Path
+
 from gtts import gTTS
+
+VOICE_DIR = Path(__file__).parent / "voices"
+VOICE_DIR.mkdir(exist_ok=True)
+
+_vieneu_model = None
 
 
 def _sanitize(text: str) -> str:
-    """Clean text for TTS - remove timestamps, emoji, hashtags, URLs."""
     text = re.sub(r'\[\d+[-–]\d+s?\]', '', text)
     text = re.sub(r'[\U0001f000-\U0001ffff\U00002702-\U000027B0\U0000fe00-\U0000fe0f\U0001fa00-\U0001faff\U00002600-\U000026FF]+', '', text)
     text = re.sub(r'#\w+', '', text)
@@ -17,57 +22,7 @@ def _sanitize(text: str) -> str:
     return text[:2000]
 
 
-async def generate_audio(
-    text: str,
-    output_path: str,
-    rate: str = "+75%",
-) -> str:
-    """Generate MP3 audio from Vietnamese text."""
-    clean = _sanitize(text)
-    if not clean:
-        return ""
-
-    tmp_path = output_path + ".tmp.mp3"
-    tts = gTTS(text=clean, lang="vi", slow=False)
-    tts.save(tmp_path)
-
-    # Speed up with ffmpeg atempo filter
-    pct = int(re.search(r'\d+', rate).group()) if re.search(r'\d+', rate) else 0
-    tempo = 1 + pct / 100 if pct > 0 else 1.0
-    subprocess.run(
-        ["ffmpeg", "-y", "-i", tmp_path, "-filter:a", f"atempo={tempo}", output_path],
-        capture_output=True, timeout=30,
-    )
-    Path(tmp_path).unlink(missing_ok=True)
-
-    # If over 30s, speed up further to fit under 30s
-    MAX_DURATION = 30.0
-    duration = _get_duration(output_path)
-    if duration and duration > MAX_DURATION:
-        extra_tempo = duration / MAX_DURATION
-        tmp2 = output_path + ".fast.mp3"
-        # atempo only accepts 0.5-2.0, chain filters if needed
-        filters = []
-        t = extra_tempo
-        while t > 2.0:
-            filters.append("atempo=2.0")
-            t /= 2.0
-        filters.append(f"atempo={t:.4f}")
-        subprocess.run(
-            ["ffmpeg", "-y", "-i", output_path, "-filter:a", ",".join(filters), tmp2],
-            capture_output=True, timeout=30,
-        )
-        if Path(tmp2).exists():
-            Path(tmp2).replace(output_path)
-
-    if not Path(output_path).exists():
-        raise RuntimeError("TTS failed: no audio generated")
-
-    return output_path
-
-
 def _get_duration(path: str) -> float | None:
-    """Get audio duration in seconds using ffprobe."""
     try:
         result = subprocess.run(
             ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
@@ -77,3 +32,140 @@ def _get_duration(path: str) -> float | None:
         return float(result.stdout.strip())
     except Exception:
         return None
+
+
+def _speed_to_30s(path: str):
+    MAX_DURATION = 30.0
+    duration = _get_duration(path)
+    if duration and duration > MAX_DURATION:
+        extra_tempo = duration / MAX_DURATION
+        tmp = path + ".fast.mp3"
+        filters = []
+        t = extra_tempo
+        while t > 2.0:
+            filters.append("atempo=2.0")
+            t /= 2.0
+        filters.append(f"atempo={t:.4f}")
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", path, "-filter:a", ",".join(filters), tmp],
+            capture_output=True, timeout=30,
+        )
+        if Path(tmp).exists():
+            Path(tmp).replace(path)
+
+
+async def generate_audio(
+    text: str,
+    output_path: str,
+    rate: str = "+75%",
+    voice_type: str = "gtts",
+) -> str:
+    clean = _sanitize(text)
+    if not clean:
+        return ""
+
+    if voice_type == "vieneu":
+        await _generate_vieneu(clean, output_path)
+    elif voice_type == "vieneu-clone":
+        await _generate_vieneu_clone(clean, output_path)
+    elif voice_type == "elevenlabs":
+        raise RuntimeError(
+            "ElevenLabs chưa cài đặt. Hướng dẫn:\n"
+            "1. pip install elevenlabs\n"
+            "2. Đăng ký tại elevenlabs.io (miễn phí 10k ký tự/tháng)\n"
+            "3. Clone giọng tại elevenlabs.io/app/voice-lab\n"
+            "4. Thêm vào .env: ELEVENLABS_API_KEY=... và ELEVENLABS_VOICE_ID=..."
+        )
+    else:
+        await _generate_gtts(clean, output_path, rate)
+
+    _speed_to_30s(output_path)
+
+    if not Path(output_path).exists():
+        raise RuntimeError("TTS failed: no audio generated")
+    return output_path
+
+
+async def _generate_gtts(text: str, output_path: str, rate: str) -> str:
+    tmp_path = output_path + ".tmp.mp3"
+    tts = gTTS(text=text, lang="vi", slow=False)
+    tts.save(tmp_path)
+
+    pct = int(re.search(r'\d+', rate).group()) if re.search(r'\d+', rate) else 0
+    tempo = 1 + pct / 100 if pct > 0 else 1.0
+    subprocess.run(
+        ["ffmpeg", "-y", "-i", tmp_path, "-filter:a", f"atempo={tempo}", output_path],
+        capture_output=True, timeout=30,
+    )
+    Path(tmp_path).unlink(missing_ok=True)
+    return output_path
+
+
+def _get_vieneu():
+    global _vieneu_model
+    if _vieneu_model is None:
+        from vieneu import Vieneu
+        _vieneu_model = Vieneu()
+    return _vieneu_model
+
+
+async def _generate_vieneu(text: str, output_path: str) -> str:
+    """Generate speech using VieNeu-TTS default voice."""
+    tts = _get_vieneu()
+    wav_path = output_path + ".wav"
+    # Use female Northern voice by default
+    voice = tts.get_preset_voice("Bích Ngọc (Nữ - Miền Bắc)")
+    audio = tts.infer(text=text, voice=voice)
+    tts.save(audio, wav_path)
+    subprocess.run(
+        ["ffmpeg", "-y", "-i", wav_path, "-b:a", "192k", output_path],
+        capture_output=True, timeout=60,
+    )
+    Path(wav_path).unlink(missing_ok=True)
+    return output_path
+
+
+async def _generate_vieneu_clone(text: str, output_path: str) -> str:
+    """Generate speech using VieNeu-TTS with cloned voice."""
+    ref_wav = get_voice_sample()
+    if not ref_wav:
+        raise RuntimeError("Chưa upload mẫu giọng nói. Upload file WAV/MP3 (6-30s) trước.")
+
+    # Read ref_text if saved alongside the sample
+    ref_text_path = VOICE_DIR / "ref_text.txt"
+    ref_text = ref_text_path.read_text().strip() if ref_text_path.exists() else ""
+
+    tts = _get_vieneu()
+    wav_path = output_path + ".wav"
+    audio = tts.infer(
+        text=text,
+        ref_audio=ref_wav,
+        ref_text=ref_text,
+    )
+    tts.save(audio, wav_path)
+    subprocess.run(
+        ["ffmpeg", "-y", "-i", wav_path, "-b:a", "192k", output_path],
+        capture_output=True, timeout=60,
+    )
+    Path(wav_path).unlink(missing_ok=True)
+    return output_path
+
+
+def save_voice_sample(data: bytes, filename: str) -> str:
+    ext = Path(filename).suffix.lower()
+    raw_path = VOICE_DIR / f"my-voice{ext}"
+    raw_path.write_bytes(data)
+    wav_path = VOICE_DIR / "my-voice.wav"
+    # Convert to WAV 24kHz mono, skip first 5s, take 10s for best clone quality
+    subprocess.run(
+        ["ffmpeg", "-y", "-ss", "5", "-i", str(raw_path), "-ar", "24000", "-ac", "1", "-t", "10", str(wav_path)],
+        capture_output=True, timeout=30,
+    )
+    if wav_path.exists():
+        return str(wav_path)
+    raise RuntimeError("Không thể xử lý file giọng nói")
+
+
+def get_voice_sample() -> str | None:
+    wav = VOICE_DIR / "my-voice.wav"
+    return str(wav) if wav.exists() else None

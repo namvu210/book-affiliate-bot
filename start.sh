@@ -1,7 +1,9 @@
 #!/bin/bash
 cd "$(dirname "$0")"
+set -a
+source ~/.env 2>/dev/null
 source .env 2>/dev/null
-export AWS_PROFILE=${AWS_PROFILE:-cloud-code}
+set +a
 ada credentials update --profile "$AWS_PROFILE" --account "$AWS_ACCOUNT_ID" --role "$AWS_ROLE" --once
 
 # Kill any existing instance on port 8000
