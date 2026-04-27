@@ -1,6 +1,9 @@
 #!/bin/bash
 cd "$(dirname "$0")"
+set -a
+source ~/.env 2>/dev/null
 source .env 2>/dev/null
+set +a
 
 # Kill any existing instance on port 8000
 lsof -ti:8000 | xargs kill -9 2>/dev/null

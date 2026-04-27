@@ -6,10 +6,10 @@ RUN apt-get update && \
 
 WORKDIR /app
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt gTTS Pillow pilmoji
+RUN pip install --no-cache-dir -r requirements.txt pilmoji
 
 COPY . .
-RUN mkdir -p uploads output fonts
+RUN mkdir -p uploads output fonts voices templates_video
 
 EXPOSE 8000
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]

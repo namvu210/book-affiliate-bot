@@ -23,6 +23,7 @@ def generate_review(
     audience_key: str = "phu-huynh-lop-5",
     platform: str = "facebook",
     custom_audience: dict | None = None,
+    word_count: int = 150,
 ) -> dict:
     """Generate a review + social post for a book targeting a specific audience."""
     audience = custom_audience or AUDIENCES.get(audience_key, AUDIENCES["phu-huynh-lop-5"])
@@ -68,8 +69,8 @@ LƯU Ý QUAN TRỌNG:
 
 Trả về JSON với format:
 {{
-  "review": "Bài review chi tiết về sách (200-300 từ)",
-  "social_post": "Bài đăng {platform} hoàn chỉnh",
+  "review": "Bài review chi tiết về sách ({word_count} từ)",
+  "social_post": "Bài đăng {platform} hoàn chỉnh (khoảng {word_count} từ)",
   "hashtags": ["danh sách hashtag phù hợp"],
   "hook": "Câu mở đầu gây chú ý (dùng cho video/reel)",
   "key_points": ["3-5 điểm nổi bật của sách"],
@@ -110,6 +111,7 @@ def generate_review_all_platforms(
     book: BookInfo,
     audience_key: str = "phu-huynh-lop-5",
     custom_audience: dict | None = None,
+    word_count: int = 150,
 ) -> dict:
     """Generate reviews for both Facebook and TikTok."""
     return {
@@ -125,6 +127,6 @@ def generate_review_all_platforms(
             "review_count_used": len(book.reviews),
         },
         "audience": audience_key,
-        "facebook": generate_review(book, audience_key, "facebook", custom_audience),
-        "tiktok": generate_review(book, audience_key, "tiktok", custom_audience),
+        "facebook": generate_review(book, audience_key, "facebook", custom_audience, word_count),
+        "tiktok": generate_review(book, audience_key, "tiktok", custom_audience, word_count),
     }
