@@ -315,7 +315,8 @@ async def from_url(
     audience: str = Form("phu-huynh-lop-5"),
     custom_audience: str = Form(""),
     affiliate_url: str = Form(""),
-    word_count: int = Form(150),
+    word_count_fb: int = Form(150),
+    word_count_tk: int = Form(80),
     media: list[UploadFile] = File(default=[]),
 ):
     if "shopee" not in url:
@@ -325,7 +326,7 @@ async def from_url(
     if affiliate_url:
         book.shopee_url = affiliate_url
     ca = json.loads(custom_audience) if custom_audience else None
-    result = generate_review_all_platforms(book, audience, ca, min(word_count, 200))
+    result = generate_review_all_platforms(book, audience, ca, min(word_count_fb, 300), min(word_count_tk, 150))
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     result = await _add_audio(result, ts)

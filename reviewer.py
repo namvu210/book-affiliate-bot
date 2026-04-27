@@ -111,7 +111,8 @@ def generate_review_all_platforms(
     book: BookInfo,
     audience_key: str = "phu-huynh-lop-5",
     custom_audience: dict | None = None,
-    word_count: int = 150,
+    word_count_fb: int = 150,
+    word_count_tk: int = 80,
 ) -> dict:
     """Generate reviews for both Facebook and TikTok."""
     return {
@@ -127,6 +128,6 @@ def generate_review_all_platforms(
             "review_count_used": len(book.reviews),
         },
         "audience": audience_key,
-        "facebook": generate_review(book, audience_key, "facebook", custom_audience, word_count),
-        "tiktok": generate_review(book, audience_key, "tiktok", custom_audience, word_count),
+        "facebook": generate_review(book, audience_key, "facebook", custom_audience, word_count_fb),
+        "tiktok": generate_review(book, audience_key, "tiktok", custom_audience, word_count_tk),
     }
