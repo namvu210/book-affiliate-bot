@@ -29,8 +29,8 @@ def generate_review(
     audience = custom_audience or AUDIENCES.get(audience_key, AUDIENCES["phu-huynh-lop-5"])
 
     platform_guide = {
-        "facebook": "Bài viết Facebook 300-500 từ, có emoji, chia đoạn rõ ràng, kết thúc bằng CTA mua sách.",
-        "tiktok": "Script TikTok 60-90 giây. Viết dạng văn nói tự nhiên, KHÔNG dùng timestamp như [0-3s]. Mở đầu bằng hook gây tò mò, ngắn gọn, có nhịp điệu. Viết như đang nói chuyện với người xem.",
+        "facebook": "Bài viết Facebook 300-500 từ, có emoji, chia đoạn rõ ràng, kết thúc bằng CTA mua sản phẩm. Viết theo góc nhìn KOL/người dùng thực sự đã trải nghiệm sản phẩm, KHÔNG viết như shop bán hàng. Dùng ngôi thứ nhất (mình/tôi), chia sẻ cảm nhận cá nhân, kể trải nghiệm thực tế.",
+        "tiktok": "Script TikTok 60-90 giây. Viết dạng văn nói tự nhiên, KHÔNG dùng timestamp như [0-3s]. Mở đầu bằng hook gây tò mò, ngắn gọn, có nhịp điệu. Viết như KOL đang nói chuyện với người xem, chia sẻ trải nghiệm cá nhân. KHÔNG viết như quảng cáo hay shop bán hàng.",
     }
 
     ratings_context = ""
@@ -44,7 +44,7 @@ def generate_review(
             review_texts.append(f"  {stars} {r['text'][:200]}")
         ratings_context += "\n- Nhận xét thực từ người mua:\n" + "\n".join(review_texts)
 
-    prompt = f"""Bạn là chuyên gia review sách và content creator cho mạng xã hội tại Việt Nam.
+    prompt = f"""Bạn là một KOL (Key Opinion Leader) / content creator review sản phẩm trên mạng xã hội tại Việt Nam. Bạn viết review từ góc nhìn người dùng thực sự đã mua và trải nghiệm sản phẩm, KHÔNG phải từ góc nhìn shop bán hàng. Giọng văn tự nhiên, chân thực, có cảm xúc cá nhân.
 
 THÔNG TIN SÁCH:
 - Tên: {book.title}
