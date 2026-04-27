@@ -488,7 +488,7 @@ def generate_tiktok_video(
         else:
             loaded_imgs.append(Image.new("RGB", (WIDTH * 2, HEIGHT * 2), (15, 15, 35)))
 
-    total_frames = int(duration * fps)
+    total_frames = int((duration + 2) * fps)  # +2s buffer for speech to finish
 
     # Intro/outro frames (2 seconds each)
     intro_frames = int(2 * fps) if show_intro and book_title else 0

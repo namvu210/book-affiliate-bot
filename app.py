@@ -315,8 +315,8 @@ async def from_url(
     audience: str = Form("phu-huynh-lop-5"),
     custom_audience: str = Form(""),
     affiliate_url: str = Form(""),
-    word_count_fb: int = Form(150),
-    word_count_tk: int = Form(80),
+    word_count_fb: int = Form(200),
+    word_count_tk: int = Form(150),
     media: list[UploadFile] = File(default=[]),
 ):
     if "shopee" not in url:
