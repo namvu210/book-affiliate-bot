@@ -195,19 +195,25 @@ function toggleELVoices(sel, platform) {
     if (sel.value === 'elevenlabs') {
         elSel.style.display = '';
         if (!_elVoicesLoaded) {
-            _elVoicesLoaded = true;
-            fetch('/api/elevenlabs-voices').then(r=>r.json()).then(d=>{
-                // Update all el-voice selects
-                document.querySelectorAll('[id^="el-voice-"]').forEach(function(s){
+            elSel.innerHTML = '<option value="">Đang tải giọng...</option>';
+            fetch('/api/elevenlabs-voices').then(function(r){ return r.json(); }).then(function(d){
+                _elVoicesLoaded = true;
+                var allSels = document.querySelectorAll('[id^="el-voice-"]');
+                for (var i = 0; i < allSels.length; i++) {
+                    var s = allSels[i];
                     s.innerHTML = '';
-                    (d.voices||[]).forEach(function(v){
+                    var voices = d.voices || [];
+                    for (var j = 0; j < voices.length; j++) {
+                        var v = voices[j];
                         var opt = document.createElement('option');
                         opt.value = v.id;
                         opt.textContent = v.name + (v.category ? ' (' + v.category + ')' : '');
                         s.appendChild(opt);
-                    });
-                    if (!d.voices?.length) s.innerHTML = '<option value="">Không có giọng nào</option>';
-                });
+                    }
+                    if (voices.length === 0) s.innerHTML = '<option value="">Không có giọng</option>';
+                }
+            }).catch(function(e){
+                elSel.innerHTML = '<option value="">Lỗi: ' + e.message + '</option>';
             });
         }
     } else {
