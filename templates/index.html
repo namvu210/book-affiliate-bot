@@ -43,6 +43,26 @@
     <h1>📚 Book Affiliate Bot</h1>
     <p class="subtitle">Upload sách PDF hoặc dán link Shopee → Tự động tạo review & bài đăng</p>
 
+    <div style="background:#fff;padding:10px 20px;border-radius:8px;margin-bottom:12px;box-shadow:0 2px 8px rgba(0,0,0,.06);display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <span style="font-size:.85em">🤖 Model:</span>
+        <select id="gemini-model" onchange="fetch('/api/set-model?model='+this.value)" style="padding:6px 10px;border-radius:6px;border:1.5px solid #ddd;font-size:.85em">
+            <option>Đang tải...</option>
+        </select>
+    </div>
+    <script>
+    fetch('/api/models').then(r=>r.json()).then(d=>{
+        var sel=document.getElementById('gemini-model');
+        sel.innerHTML='';
+        var models = d.models||[];
+        models.forEach(function(m){
+            var opt=document.createElement('option');
+            opt.value=m;opt.textContent=m;
+            if(m.indexOf('flash-lite')>=0) opt.selected=true;
+            sel.appendChild(opt);
+        });
+    });
+    </script>
+
     <div style="background:#fff;padding:12px 20px;border-radius:8px;margin-bottom:16px;box-shadow:0 2px 8px rgba(0,0,0,.06)">
         <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
             <span style="font-size:.9em">🎙️ Voice Clone:</span>
@@ -169,6 +189,32 @@ function copyText(id) {
     setTimeout(() => btn.textContent = '📋 Copy', 1500);
 }
 
+var _elVoicesLoaded = false;
+function toggleELVoices(sel, platform) {
+    var elSel = document.getElementById('el-voice-' + platform);
+    if (sel.value === 'elevenlabs') {
+        elSel.style.display = '';
+        if (!_elVoicesLoaded) {
+            _elVoicesLoaded = true;
+            fetch('/api/elevenlabs-voices').then(r=>r.json()).then(d=>{
+                // Update all el-voice selects
+                document.querySelectorAll('[id^="el-voice-"]').forEach(function(s){
+                    s.innerHTML = '';
+                    (d.voices||[]).forEach(function(v){
+                        var opt = document.createElement('option');
+                        opt.value = v.id;
+                        opt.textContent = v.name + (v.category ? ' (' + v.category + ')' : '');
+                        s.appendChild(opt);
+                    });
+                    if (!d.voices?.length) s.innerHTML = '<option value="">Không có giọng nào</option>';
+                });
+            });
+        }
+    } else {
+        elSel.style.display = 'none';
+    }
+}
+
 async function generateSpeech(platform) {
     const textarea = document.getElementById('post-' + platform);
     const text = textarea.value.trim();
@@ -183,6 +229,8 @@ async function generateSpeech(platform) {
         fd.append('text', text);
         fd.append('platform', platform);
         fd.append('voice_type', voiceType);
+        var elVoiceSel = document.getElementById('el-voice-' + platform);
+        if (voiceType === 'elevenlabs' && elVoiceSel?.value) fd.append('elevenlabs_voice_id', elVoiceSel.value);
         const resp = await fetch('/generate-speech', { method: 'POST', body: fd });
         if (!resp.ok) { const err = await resp.json(); throw new Error(err.detail || 'Lỗi'); }
         const data = await resp.json();
@@ -314,11 +362,14 @@ function renderResult(data) {
             </h3>
             <textarea id="post-${p||'single'}" rows="10" style="width:100%;padding:12px;border:1.5px solid #ddd;border-radius:8px;font-size:.9em;line-height:1.6;font-family:inherit;resize:vertical">${postText}</textarea>
             <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                <select id="voice-${p||'single'}" style="padding:6px 10px;border-radius:6px;border:1.5px solid #ddd;font-size:.85em">
+                <select id="voice-${p||'single'}" style="padding:6px 10px;border-radius:6px;border:1.5px solid #ddd;font-size:.85em" onchange="toggleELVoices(this,'${p||'single'}')">
                     <option value="gtts">🤖 gTTS (nhanh)</option>
                     <option value="vieneu">🇻🇳 VieNeu (tự nhiên)</option>
                     <option value="vieneu-clone">🎙️ Clone giọng (VieNeu)</option>
-                    <option value="elevenlabs">🎙️ Clone giọng (ElevenLabs) — chưa cài đặt</option>
+                    <option value="elevenlabs">🎙️ Clone giọng (ElevenLabs)</option>
+                </select>
+                <select id="el-voice-${p||'single'}" style="padding:6px 10px;border-radius:6px;border:1.5px solid #ddd;font-size:.85em;display:none">
+                    <option value="">Đang tải giọng...</option>
                 </select>
                 <button class="btn" onclick="generateSpeech('${p||'single'}')" id="btn-speech-${p||'single'}" style="padding:8px 20px;font-size:.9em">
                     🔊 Tạo giọng nói
@@ -418,6 +469,10 @@ function renderResult(data) {
                             <option value="split_screen">Chia đôi màn hình</option>
                         </optgroup>
                     </select>
+                </label>
+                <label style="font-size:.85em;display:flex;align-items:center;gap:6px">
+                    🔍 Zoom: <span id="zoom-val">15</span>%
+                    <input type="range" id="zoom-ratio" min="5" max="50" value="15" step="5" style="width:80px" oninput="document.getElementById('zoom-val').textContent=this.value">
                 </label>
             </div>
             <div style="display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
@@ -804,6 +859,7 @@ function getVideoFormData() {
     fd.append('subtitle_style', document.getElementById('subtitle-style')?.value || 'tiktok');
     fd.append('highlight_color', document.getElementById('highlight-color')?.value || '#FFD700');
     fd.append('img_effect', document.getElementById('img-effect')?.value || 'ken_burns');
+    fd.append('zoom_ratio', document.getElementById('zoom-ratio')?.value || '15');
     fd.append('show_intro', document.getElementById('show-intro')?.checked ? '1' : '0');
     fd.append('show_outro', document.getElementById('show-outro')?.checked ? '1' : '0');
     const introBg = document.getElementById('intro-bg')?.files?.[0];

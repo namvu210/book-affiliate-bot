@@ -59,6 +59,7 @@ async def generate_audio(
     output_path: str,
     rate: str = "+75%",
     voice_type: str = "gtts",
+    elevenlabs_voice_id: str = "",
 ) -> str:
     clean = _sanitize(text)
     if not clean:
@@ -69,13 +70,7 @@ async def generate_audio(
     elif voice_type == "vieneu-clone":
         await _generate_vieneu_clone(clean, output_path)
     elif voice_type == "elevenlabs":
-        raise RuntimeError(
-            "ElevenLabs chưa cài đặt. Hướng dẫn:\n"
-            "1. pip install elevenlabs\n"
-            "2. Đăng ký tại elevenlabs.io (miễn phí 10k ký tự/tháng)\n"
-            "3. Clone giọng tại elevenlabs.io/app/voice-lab\n"
-            "4. Thêm vào .env: ELEVENLABS_API_KEY=... và ELEVENLABS_VOICE_ID=..."
-        )
+        await _generate_elevenlabs(clean, output_path, elevenlabs_voice_id)
     else:
         await _generate_gtts(clean, output_path, rate)
 
@@ -148,6 +143,28 @@ async def _generate_vieneu_clone(text: str, output_path: str) -> str:
         capture_output=True, timeout=60,
     )
     Path(wav_path).unlink(missing_ok=True)
+    return output_path
+
+
+async def _generate_elevenlabs(text: str, output_path: str, voice_id_override: str = "") -> str:
+    """Generate speech using ElevenLabs voice clone."""
+    import os
+    api_key = os.getenv("ELEVENLABS_API_KEY", "")
+    voice_id = voice_id_override or os.getenv("ELEVENLABS_VOICE_ID", "")
+    if not api_key or not voice_id:
+        raise RuntimeError("Cần ELEVENLABS_API_KEY và ELEVENLABS_VOICE_ID trong .env")
+
+    from elevenlabs import ElevenLabs
+    client = ElevenLabs(api_key=api_key)
+    audio = client.text_to_speech.convert(
+        voice_id=voice_id,
+        text=text,
+        model_id="eleven_multilingual_v2",
+        output_format="mp3_44100_128",
+    )
+    with open(output_path, "wb") as f:
+        for chunk in audio:
+            f.write(chunk)
     return output_path
 
 

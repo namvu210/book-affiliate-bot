@@ -112,17 +112,43 @@ def _extract_cover_from_pdf(pdf_path: str, out_path: str) -> str | None:
 
 
 def _load_image_fill(path: str) -> Image.Image:
-    """Load image and resize to fill 9:16."""
+    """Load image with blurred background fill — no content lost."""
     img = Image.open(path).convert("RGB")
-    scale = max(WIDTH / img.width, HEIGHT / img.height)
-    img = img.resize((int(img.width * scale * 1.3), int(img.height * scale * 1.3)), Image.LANCZOS)
-    return img
+
+    # Target size slightly larger than output for Ken Burns headroom
+    tw = int(WIDTH * 1.2)
+    th = int(HEIGHT * 1.2)
+
+    # Create blurred background: scale to fill, blur heavily
+    bg_scale = max(tw / img.width, th / img.height)
+    bg = img.resize((int(img.width * bg_scale), int(img.height * bg_scale)), Image.LANCZOS)
+    left = (bg.width - tw) // 2
+    top = (bg.height - th) // 2
+    bg = bg.crop((left, top, left + tw, top + th))
+    bg = bg.filter(ImageFilter.GaussianBlur(radius=30))
+    dark = Image.new("RGB", (tw, th), (0, 0, 0))
+    bg = Image.blend(bg, dark, 0.3)
+
+    # Fit sharp original: scale to fit within frame
+    fit_scale = min(WIDTH / img.width, HEIGHT / img.height) * 0.85
+    sharp_w = int(img.width * fit_scale)
+    sharp_h = int(img.height * fit_scale)
+    sharp = img.resize((sharp_w, sharp_h), Image.LANCZOS)
+
+    # Center sharp image on blurred background
+    x = (tw - sharp_w) // 2
+    y = (th - sharp_h) // 2
+
+    # Shadow
+    shadow = Image.new("RGBA", (sharp_w + 16, sharp_h + 16), (0, 0, 0, 80))
+    bg.paste(shadow.convert("RGB"), (x + 8, y + 8), shadow)
+    bg.paste(sharp, (x, y))
+    return bg
 
 
-def _crop_animated(img: Image.Image, progress: float) -> Image.Image:
+def _crop_animated(img: Image.Image, progress: float, zoom_ratio: float = 0.15) -> Image.Image:
     """Ken Burns: slow zoom + pan based on progress (0.0 to 1.0)."""
-    # Zoom from 1.0x to 1.15x
-    zoom = 1.0 + 0.15 * progress
+    zoom = 1.0 + zoom_ratio * progress
     cw = int(WIDTH / zoom)
     ch = int(HEIGHT / zoom)
     # Pan: drift from center-left to center-right
@@ -225,18 +251,20 @@ def _draw_word_highlight_frame(
 
 
 def _center_crop(src, w=None, h=None):
-    """Crop center of src to WIDTHxHEIGHT."""
+    """Crop center of src to target size."""
     w = w or WIDTH
     h = h or HEIGHT
-    return src.crop(((src.width-w)//2, (src.height-h)//2, (src.width+w)//2, (src.height+h)//2)).resize((w, h), Image.LANCZOS)
+    if src.width < w or src.height < h:
+        src = src.resize((max(w, src.width), max(h, src.height)), Image.LANCZOS)
+    return src.crop(((src.width-w)//2, (src.height-h)//2, (src.width+w)//2, (src.height+h)//2))
 
 
-def _apply_effect(src, effect, gp, lp, all_imgs, img_idx):
+def _apply_effect(src, effect, gp, lp, all_imgs, img_idx, zoom_ratio=0.15):
     """Apply image effect. gp=global progress 0-1, lp=local progress 0-1."""
     from PIL import ImageEnhance, ImageOps
 
     if effect == "ken_burns":
-        return _crop_animated(src, gp)
+        return _crop_animated(src, gp, zoom_ratio)
 
     elif effect == "slide_lr":
         max_x = src.width - WIDTH
@@ -251,7 +279,7 @@ def _apply_effect(src, effect, gp, lp, all_imgs, img_idx):
         return src.crop((x, y, x + WIDTH, y + HEIGHT))
 
     elif effect == "bounce_zoom":
-        z = 1.0 + 0.1 * math.sin(gp * math.pi * 4)
+        z = 1.0 + zoom_ratio * math.sin(gp * math.pi * 4)
         cw, ch = int(WIDTH / z), int(HEIGHT / z)
         cx = (src.width - cw) // 2
         cy = (src.height - ch) // 2
@@ -386,6 +414,7 @@ def generate_tiktok_video(
     subtitle_style: str = "tiktok",
     highlight_color: str = "#FFD700",
     img_effect: str = "ken_burns",
+    zoom_ratio: float = 0.15,
     show_intro: bool = True,
     show_outro: bool = True,
     preview_only: bool = False,
@@ -516,7 +545,7 @@ def generate_tiktok_video(
                 global_progress = min(1.0, (time_elapsed + f / fps) / duration)
                 local_progress = f / sent_frames
                 src = loaded_imgs[img_idx]
-                bg = _apply_effect(src, img_effect, global_progress, local_progress, loaded_imgs, img_idx)
+                bg = _apply_effect(src, img_effect, global_progress, local_progress, loaded_imgs, img_idx, zoom_ratio)
 
                 word_prog = f / sent_frames
                 frame = _draw_word_highlight_frame(bg, sentence, word_prog, subtitle_style, highlight_color)

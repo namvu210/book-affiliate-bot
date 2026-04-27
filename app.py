@@ -37,7 +37,59 @@ async def home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request, "audiences": AUDIENCES})
 
 
+@app.get("/api/elevenlabs-voices")
+async def elevenlabs_voices():
+    """List available ElevenLabs voices."""
+    api_key = os.getenv("ELEVENLABS_API_KEY", "")
+    if not api_key:
+        return {"voices": [], "error": "Cần ELEVENLABS_API_KEY trong .env"}
+    try:
+        from elevenlabs import ElevenLabs
+        client = ElevenLabs(api_key=api_key)
+        resp = client.voices.get_all()
+        voices = [{"id": v.voice_id, "name": v.name, "category": v.category or ""} for v in resp.voices]
+        return {"voices": voices}
+    except Exception as e:
+        return {"voices": [], "error": str(e)[:200]}
+
+
+@app.get("/api/set-model")
+async def set_model(model: str = "gemini-2.5-flash-lite"):
+    """Switch Gemini model at runtime."""
+    import google.generativeai as genai
+    import reviewer
+    try:
+        reviewer._model = genai.GenerativeModel(model)
+        return {"status": "ok", "model": model}
+    except Exception as e:
+        return {"error": str(e)[:200]}
+
+
+@app.get("/api/models")
+async def list_models():
+    """List available Gemini models."""
+    import google.generativeai as genai
+    from config import GEMINI_API_KEY
+    try:
+        genai.configure(api_key=GEMINI_API_KEY)
+        models = []
+        for m in genai.list_models():
+            methods = [s.name for s in m.supported_generation_methods]
+            if "generateContent" in methods:
+                models.append(m.name.replace("models/", ""))
+        # Filter to gemini models only, sort newest first
+        models = [m for m in models if m.startswith("gemini")]
+        return {"models": sorted(models, reverse=True)}
+    except Exception:
+        # Fallback: known models
+        return {"models": [
+            "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite",
+            "gemini-2.0-flash-lite",
+        ]}
+
+
 @app.get("/api/music")
+
 async def get_music(category: str = "", q: str = "", refresh: bool = False, source: str = "freesound"):
     """Search free music from Freesound or Jamendo."""
     import httpx as hx
@@ -335,12 +387,13 @@ async def generate_speech(
     text: str = Form(...),
     platform: str = Form("tiktok"),
     voice_type: str = Form("gtts"),
+    elevenlabs_voice_id: str = Form(""),
 ):
     """Generate speech audio from edited text."""
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"{ts}_{platform}.mp3"
     audio_path = str(Path(OUTPUT_DIR) / filename)
-    await generate_audio(text, audio_path, voice_type=voice_type)
+    await generate_audio(text, audio_path, voice_type=voice_type, elevenlabs_voice_id=elevenlabs_voice_id)
     return {"audio_url": f"/output/{filename}"}
 
 
@@ -458,6 +511,7 @@ async def generate_video(
     subtitle_style: str = Form("tiktok"),
     highlight_color: str = Form("#FFD700"),
     img_effect: str = Form("ken_burns"),
+    zoom_ratio: int = Form(15),
     show_intro: str = Form("1"),
     show_outro: str = Form("1"),
     preview_only: str = Form("0"),
@@ -566,6 +620,7 @@ async def generate_video(
         subtitle_style=subtitle_style,
         highlight_color=highlight_color,
         img_effect=img_effect,
+        zoom_ratio=max(5, min(50, zoom_ratio)) / 100,
         show_intro=show_intro == "1",
         show_outro=show_outro == "1",
         preview_only=preview_only == "1",
