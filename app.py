@@ -620,7 +620,7 @@ async def generate_video(
         subtitle_style=subtitle_style,
         highlight_color=highlight_color,
         img_effect=img_effect,
-        zoom_ratio=max(5, min(50, zoom_ratio)) / 100,
+        zoom_ratio=max(5, min(100, zoom_ratio)) / 100,
         show_intro=show_intro == "1",
         show_outro=show_outro == "1",
         preview_only=preview_only == "1",
