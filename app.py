@@ -258,6 +258,22 @@ async def from_url(
     return result.review_data
 
 
+@app.post("/publish")
+async def publish_content(
+    review_json: str = Form(...),
+    video_url: str = Form(""),
+    platforms: str = Form("tiktok,youtube"),
+):
+    """Publish video + caption to social platforms via n8n."""
+    from poster import publish, build_post_request
+    data = json.loads(review_json)
+    platform_list = [p.strip() for p in platforms.split(",") if p.strip()]
+    req = build_post_request(data, video_url, platform_list[0] if platform_list else "tiktok")
+    req.platforms = platform_list
+    results = await publish(req)
+    return {"results": [{"platform": r.platform, "success": r.success, "message": r.message, "post_url": r.post_url} for r in results]}
+
+
 @app.post("/batch-personas")
 async def batch_personas(
     urls: str = Form(...),

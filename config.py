@@ -59,6 +59,9 @@ DEFAULT_VOICE_SPEED = 120
 AFFIPAD_API_KEY = os.getenv("AFFIPAD_API_KEY", "")
 AFFIPAD_TOOL_ID = os.getenv("AFFIPAD_TOOL_ID", "")
 
+# n8n posting automation
+N8N_WEBHOOK_URL = os.getenv("N8N_WEBHOOK_URL", "")  # e.g. http://localhost:5678/webhook/publish
+
 # Target audience templates
 AUDIENCES = {
     "phu-huynh-lop-5": {

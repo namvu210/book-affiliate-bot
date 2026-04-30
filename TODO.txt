@@ -1,0 +1,61 @@
+TODO - Book Affiliate Bot
+=========================
+Date: 2026-04-30
+
+## URGENT — Blockers for posting
+- [ ] Fix video FPS from 10 to 24 (TikTok min 23fps, Facebook min 24fps)
+      → video/render.py, change fps = 10 to fps = 24
+      → Test video quality and render time impact
+
+## Platform Setup (manual, no code)
+- [ ] Register TikTok developer app at developers.tiktok.com
+      → Add Content Posting API product
+      → Request video.upload scope approval (takes 1-2 weeks)
+- [ ] Create Facebook App at developers.facebook.com
+      → Request pages_manage_posts permission
+      → Get Page access token for your Facebook Page
+- [ ] Sign up for AccessTrade at accesstrade.vn
+      → Apply to Shopee campaign
+      → Get API key
+      → Test product detail API (check if returns multiple images)
+
+## Posting Module
+- [ ] Implement TikTok upload in poster.py (FILE_UPLOAD method)
+      → OAuth flow for access token
+      → Init upload → PUT video binary → Check status
+      → Note: uploads as draft, user confirms in TikTok app
+- [ ] Implement Facebook Reels in poster.py
+      → POST /{page_id}/video_reels
+      → Direct publish (no user confirmation needed)
+      → 30 reels/day limit
+- [ ] Add YouTube Shorts posting (YouTube Data API v3)
+      → Google Cloud project + OAuth
+      → videos.insert endpoint
+
+## AccessTrade Integration
+- [ ] Test AccessTrade product detail API — does it return multiple images?
+- [ ] If yes: replace AffiPad with AccessTrade for:
+      → Product images (multiple per product)
+      → Affiliate link generation
+      → Product discovery (trending products)
+- [ ] Integrate "top sản phẩm bán chạy" for auto product discovery
+
+## Testing Backlog
+- [ ] Test bookmarklet on different Shopee product types
+- [ ] Test batch generation with 5+ products
+- [ ] Test AI image generation quality with KOL photo
+- [ ] Test video effects presets (all 8)
+- [ ] Test affiliate link in review CTA (does it track?)
+- [ ] Verify ElevenLabs voice in batch mode
+
+## Code Cleanup
+- [ ] Remove dead ffmpeg pipeline code from video/render.py (~150 lines)
+- [ ] Replace debug prints with proper logging module
+- [ ] Add .gitignore entries for kol/, output/, music/ cached files
+
+## Future (not tomorrow)
+- [ ] Video mode (native video clip playback)
+- [ ] n8n integration as alternative to direct posting
+- [ ] Auto-posting scheduler (post at optimal times)
+- [ ] Analytics dashboard (which products convert)
+- [ ] Windows x86 deployment testing
