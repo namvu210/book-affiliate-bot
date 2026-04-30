@@ -3,7 +3,6 @@
 import json
 import os
 import subprocess
-from datetime import datetime
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
@@ -12,11 +11,11 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from config import AUDIENCES, OUTPUT_DIR, UPLOAD_DIR, GEMINI_MODEL
+from config import AUDIENCES, OUTPUT_DIR, UPLOAD_DIR, GEMINI_MODEL, make_ts, output_path, output_url, DEFAULT_VOICE_SPEED
 from extractor import BookInfo, extract_from_pdf, extract_from_shopee, download_images
 from reviewer import generate_review, generate_review_all_platforms
 from tts import generate_audio
-from video import generate_tiktok_video, _extract_cover_from_pdf
+from video import generate_tiktok_video, extract_cover_from_pdf
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -34,7 +33,7 @@ async def global_error_handler(request: Request, exc: Exception):
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request, "audiences": AUDIENCES})
+    return templates.TemplateResponse("index.html", {"request": request, "audiences": AUDIENCES, "default_voice_speed": DEFAULT_VOICE_SPEED})
 
 
 @app.get("/api/elevenlabs-voices")
@@ -48,7 +47,9 @@ async def elevenlabs_voices():
         client = ElevenLabs(api_key=api_key)
         resp = client.voices.get_all()
         voices = [{"id": v.voice_id, "name": v.name, "category": v.category or ""} for v in resp.voices]
-        return {"voices": voices}
+        order = {"cloned": 0, "generated": 1, "professional": 2, "premade": 3}
+        voices.sort(key=lambda v: (order.get(v["category"], 9), v["name"]))
+        return {"voices": voices[:10]}
     except Exception as e:
         return {"voices": [], "error": str(e)[:200]}
 
@@ -56,10 +57,9 @@ async def elevenlabs_voices():
 @app.get("/api/set-model")
 async def set_model(model: str = "gemini-2.5-flash-lite"):
     """Switch Gemini model at runtime."""
-    import google.generativeai as genai
     import reviewer
     try:
-        reviewer._model = genai.GenerativeModel(model)
+        reviewer.set_model(model)
         return {"status": "ok", "model": model}
     except Exception as e:
         return {"error": str(e)[:200]}
@@ -68,20 +68,16 @@ async def set_model(model: str = "gemini-2.5-flash-lite"):
 @app.get("/api/models")
 async def list_models():
     """List available Gemini models."""
-    import google.generativeai as genai
+    from google import genai
     from config import GEMINI_API_KEY
     try:
-        genai.configure(api_key=GEMINI_API_KEY)
+        client = genai.Client(api_key=GEMINI_API_KEY)
         models = []
-        for m in genai.list_models():
-            methods = [s.name for s in m.supported_generation_methods]
-            if "generateContent" in methods:
-                models.append(m.name.replace("models/", ""))
-        # Filter to gemini models only, sort newest first
+        for m in client.models.list():
+            models.append(m.name.replace("models/", ""))
         models = [m for m in models if m.startswith("gemini")]
         return {"models": sorted(models, reverse=True)}
     except Exception:
-        # Fallback: known models
         return {"models": [
             "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite",
             "gemini-2.0-flash-lite",
@@ -89,104 +85,28 @@ async def list_models():
 
 
 @app.get("/api/music")
-
 async def get_music(category: str = "", q: str = "", refresh: bool = False, source: str = "freesound"):
     """Search free music from Freesound or Jamendo."""
-    import httpx as hx
-    import random
-
-    categories = ["happy", "sad", "calm", "energetic", "acoustic", "piano", "lofi", "jazz", "pop", "cinematic", "corporate", "ambient"]
-    search = q or category or "background music"
-
-    if source == "jamendo":
-        return await _search_jamendo(search, categories, refresh)
-    return await _search_freesound(search, categories, refresh)
-
-
-async def _search_freesound(search, categories, refresh):
-    import httpx as hx, random
-    api_key = os.getenv("FREESOUND_API_KEY", "")
-    if not api_key:
-        return {"tracks": [], "categories": categories, "error": "Cần FREESOUND_API_KEY"}
-    try:
-        async with hx.AsyncClient(timeout=10) as client:
-            resp = await client.get("https://freesound.org/apiv2/search/text/", params={
-                "token": api_key,
-                "query": search,
-                "filter": "duration:[15 TO 120]",
-                "fields": "id,name,duration,previews,tags",
-                "page_size": "20",
-                "sort": "rating_desc" if not refresh else "score",
-            })
-            data = resp.json()
-            tracks = []
-            for r in data.get("results", []):
-                url = r.get("previews", {}).get("preview-hq-mp3", "")
-                if url:
-                    tags = r.get("tags", [])[:3]
-                    tracks.append({"name": r["name"], "url": url, "duration": round(r.get("duration", 0)), "category": tags[0] if tags else ""})
-            if refresh:
-                random.shuffle(tracks)
-            return {"tracks": tracks, "categories": categories, "source": "freesound"}
-    except Exception as e:
-        return {"tracks": [], "categories": categories, "error": str(e)[:100]}
-
-
-async def _search_jamendo(search, categories, refresh):
-    import httpx as hx, random
-    client_id = os.getenv("JAMENDO_CLIENT_ID", "")
-    if not client_id:
-        return {"tracks": [], "categories": categories, "error": "Cần JAMENDO_CLIENT_ID"}
-    try:
-        async with hx.AsyncClient(timeout=10) as client:
-            resp = await client.get("https://api.jamendo.com/v3.0/tracks/", params={
-                "client_id": client_id,
-                "format": "json",
-                "limit": "20",
-                "search": search,
-                "audioformat": "mp32",
-                "order": "popularity_total" if not refresh else "relevance",
-                "duration_between": "15_120",
-            })
-            data = resp.json()
-            tracks = []
-            for r in data.get("results", []):
-                url = r.get("audio", "")
-                if url:
-                    tracks.append({"name": r["name"], "url": url, "duration": r.get("duration", 0), "category": r.get("genre", "")})
-            if refresh:
-                random.shuffle(tracks)
-            return {"tracks": tracks, "categories": categories, "source": "jamendo"}
-    except Exception as e:
-        return {"tracks": [], "categories": categories, "error": str(e)[:100]}
+    from music import search_music
+    return await search_music(category, q, refresh, source)
 
 
 @app.post("/suggest-personas")
 async def suggest_personas(title: str = Form(...)):
     """Use LLM to suggest 3 customer personas for a product."""
-    from reviewer import _get_model
-    import google.generativeai as genai
-    resp = _get_model().generate_content(
-        f"""Dựa vào sản phẩm "{title}", gợi ý 3 nhóm khách hàng mục tiêu phù hợp nhất.
+    from reviewer import generate_json
+    prompt = f"""Dựa vào sản phẩm "{title}", gợi ý 3 nhóm khách hàng mục tiêu phù hợp nhất.
 
 Trả về JSON array, mỗi phần tử có:
 - "name": tên nhóm khách hàng (ngắn gọn, tiếng Việt)
 - "tone": giọng văn phù hợp
 - "focus": trọng tâm nội dung khi viết review
 
-CHỈ trả về JSON array, không giải thích.""",
-        generation_config=genai.types.GenerationConfig(
-            max_output_tokens=500,
-            response_mime_type="application/json",
-        ),
-    )
-    text = resp.text.strip()
-    if text.startswith("```"):
-        text = text.split("\n", 1)[1].rsplit("```", 1)[0]
+CHỈ trả về JSON array, không giải thích."""
     try:
-        parsed = json.loads(text)
+        parsed = generate_json(prompt, max_tokens=500)
         personas = parsed if isinstance(parsed, list) else parsed.get("personas", [])
-    except json.JSONDecodeError:
+    except Exception:
         personas = []
     return {"personas": personas}
 
@@ -208,14 +128,14 @@ async def receive_shopee_data_get(data: str = ""):
 
 
 async def _process_shopee_data(data: dict):
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    ts = make_ts()
 
     image_urls = data.get("images", [])
     video_urls = data.get("videos", [])
     all_media = image_urls + video_urls
     local_images = []
     if all_media:
-        img_dir = str(Path(OUTPUT_DIR) / f"{ts}_images")
+        img_dir = str(output_path(ts, "images"))
         local_images = await download_images(all_media, img_dir)
 
     result = {
@@ -225,8 +145,9 @@ async def _process_shopee_data(data: dict):
         "rating": data.get("rating"),
         "rating_count": data.get("rating_count", 0),
         "reviews": data.get("reviews", []),
-        "product_images": [f"/output/{ts}_images/{Path(p).name}" for p in local_images],
+        "product_images": [f"{output_url(ts, 'images')}/{Path(p).name}" for p in local_images],
         "product_images_original": all_media,
+        "url": data.get("url", ""),
     }
 
     app.state.last_shopee_data = result
@@ -250,7 +171,7 @@ async def fetch_images(url: str = Form(...)):
         raise HTTPException(400, "Chỉ hỗ trợ link Shopee")
 
     book = await extract_from_shopee(url)
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    ts = make_ts()
 
     result = {
         "title": book.title,
@@ -260,26 +181,10 @@ async def fetch_images(url: str = Form(...)):
     }
 
     if book.image_urls:
-        img_dir = str(Path(OUTPUT_DIR) / f"{ts}_images")
+        img_dir = str(output_path(ts, "images"))
         local = await download_images(book.image_urls, img_dir)
-        result["product_images"] = [f"/output/{ts}_images/{Path(p).name}" for p in local]
+        result["product_images"] = [f"{output_url(ts, 'images')}/{Path(p).name}" for p in local]
 
-    return result
-
-
-async def _add_audio(result: dict, ts: str) -> dict:
-    """Generate voice narration for each platform's social_post."""
-    for platform in ["facebook", "tiktok"]:
-        data = result.get(platform)
-        if not data:
-            continue
-        text = data.get("social_post", "")
-        if not text:
-            continue
-        filename = f"{ts}_{platform}.mp3"
-        audio_path = str(Path(OUTPUT_DIR) / filename)
-        await generate_audio(text, audio_path)
-        data["audio_url"] = f"/output/{filename}"
     return result
 
 
@@ -293,7 +198,7 @@ async def upload_pdf(
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(400, "Chỉ hỗ trợ file PDF")
 
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    ts = make_ts()
     save_path = Path(UPLOAD_DIR) / f"{ts}_{file.filename}"
     content = await file.read()
     save_path.write_bytes(content)
@@ -301,9 +206,11 @@ async def upload_pdf(
     book = extract_from_pdf(str(save_path))
     ca = json.loads(custom_audience) if custom_audience else None
     result = generate_review_all_platforms(book, audience, ca, min(word_count, 200))
+
+    from pipeline import _add_audio
     result = await _add_audio(result, ts)
 
-    out_path = Path(OUTPUT_DIR) / f"{ts}_review.json"
+    out_path = output_path(ts, "review.json")
     out_path.write_text(json.dumps(result, ensure_ascii=False, indent=2))
     result["_pdf_path"] = str(save_path)
     return result
@@ -317,42 +224,66 @@ async def from_url(
     affiliate_url: str = Form(""),
     word_count_fb: int = Form(200),
     word_count_tk: int = Form(150),
+    bookmarklet_images: str = Form("[]"),
     media: list[UploadFile] = File(default=[]),
 ):
     if "shopee" not in url:
         raise HTTPException(400, "Hiện chỉ hỗ trợ link Shopee")
 
-    book = await extract_from_shopee(url)
-    if affiliate_url:
-        book.shopee_url = affiliate_url
     ca = json.loads(custom_audience) if custom_audience else None
-    result = generate_review_all_platforms(book, audience, ca, min(word_count_fb, 300), min(word_count_tk, 150))
+    bm_imgs = json.loads(bookmarklet_images)
 
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    result = await _add_audio(result, ts)
-
-    # Save uploaded media files
+    # Handle uploaded media files
     uploaded_paths = []
     if media and media[0].filename:
-        img_dir = Path(OUTPUT_DIR) / f"{ts}_images"
+        ts_upload = make_ts()
+        img_dir = output_path(ts_upload, "images")
         img_dir.mkdir(parents=True, exist_ok=True)
         for i, f in enumerate(media):
             ext = Path(f.filename).suffix or ".jpg"
             save_to = img_dir / f"product_{i}{ext}"
             save_to.write_bytes(await f.read())
-            uploaded_paths.append(f"/output/{ts}_images/product_{i}{ext}")
+            uploaded_paths.append(f"{output_url(ts_upload, 'images')}/product_{i}{ext}")
 
-    # Use uploaded images, or fall back to extracted ones
-    if uploaded_paths:
-        result["product_images"] = uploaded_paths
-    elif book.image_urls:
-        img_dir = str(Path(OUTPUT_DIR) / f"{ts}_images")
-        local_images = await download_images(book.image_urls, img_dir)
-        result["product_images"] = [f"/output/{ts}_images/{Path(p).name}" for p in local_images]
+    from pipeline import PipelineInput, process_product
+    inp = PipelineInput(
+        url=url, audience=audience, custom_audience=ca,
+        affiliate_url=affiliate_url,
+        word_count_fb=word_count_fb, word_count_tk=word_count_tk,
+        image_urls=uploaded_paths or bm_imgs,
+    )
+    result = await process_product(inp)
+    if result.error:
+        raise HTTPException(500, result.error)
+    return result.review_data
 
-    out_path = Path(OUTPUT_DIR) / f"{ts}_review.json"
-    out_path.write_text(json.dumps(result, ensure_ascii=False, indent=2))
-    return result
+
+@app.post("/batch-personas")
+async def batch_personas(
+    urls: str = Form(...),
+    voice_type: str = Form("elevenlabs"),
+    voice_id: str = Form("T4jrQr9x0Y24833yKCWR"),
+    word_count: int = Form(150),
+):
+    """Batch: suggest personas per product, generate reviews for each persona."""
+    from pipeline import batch_with_personas
+    url_list = [u.strip() for u in urls.split("\n") if u.strip().startswith("http")]
+    if not url_list:
+        raise HTTPException(400, "Nhập ít nhất 1 link Shopee")
+    results = await batch_with_personas(url_list[:10], voice_type, voice_id, word_count)
+    return {"results": [
+        {
+            "url": r.url,
+            "title": r.title,
+            "error": r.error,
+            "personas": r.personas,
+            "reviews": [
+                {"persona": r.personas[i] if i < len(r.personas) else {},
+                 "data": rv.review_data, "error": rv.error}
+                for i, rv in enumerate(r.reviews)
+            ],
+        } for r in results
+    ]}
 
 
 @app.post("/preview")
@@ -372,12 +303,12 @@ async def preview_review(
     result = generate_review(book, audience, platform)
 
     # Generate audio for preview too
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    ts = make_ts()
     text = result.get("social_post", result.get("review", ""))
     if text:
-        filename = f"{ts}_{platform}.mp3"
-        await generate_audio(text, str(Path(OUTPUT_DIR) / filename))
-        result["audio_url"] = f"/output/{filename}"
+        suffix = f"{platform}.mp3"
+        await generate_audio(text, str(output_path(ts, suffix)))
+        result["audio_url"] = output_url(ts, suffix)
 
     return result
 
@@ -389,13 +320,14 @@ async def generate_speech(
     platform: str = Form("tiktok"),
     voice_type: str = Form("gtts"),
     elevenlabs_voice_id: str = Form(""),
+    speed: int = Form(125),
 ):
     """Generate speech audio from edited text."""
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"{ts}_{platform}.mp3"
-    audio_path = str(Path(OUTPUT_DIR) / filename)
-    await generate_audio(text, audio_path, voice_type=voice_type, elevenlabs_voice_id=elevenlabs_voice_id)
-    return {"audio_url": f"/output/{filename}"}
+    ts = make_ts()
+    suffix = f"{platform}.mp3"
+    audio_path = str(output_path(ts, suffix))
+    await generate_audio(text, audio_path, speed=speed, voice_type=voice_type, elevenlabs_voice_id=elevenlabs_voice_id)
+    return {"audio_url": output_url(ts, suffix)}
 
 
 @app.post("/upload-voice")
@@ -415,6 +347,70 @@ async def voice_status():
     """Check if voice sample exists."""
     from tts import get_voice_sample
     return {"has_voice": get_voice_sample() is not None}
+
+
+@app.post("/upload-kol")
+async def upload_kol(file: UploadFile = File(...)):
+    """Upload KOL reference photo for AI image generation."""
+    from imagegen import save_kol_photo
+    data = await file.read()
+    save_kol_photo(data, file.filename)
+    return {"status": "ok", "message": "✅ Đã lưu ảnh KOL!"}
+
+
+@app.post("/regenerate-image")
+async def regenerate_image(
+    scene: str = Form(...),
+    product_image: str = Form(""),
+):
+    """Regenerate a single AI lifestyle image."""
+    from imagegen import get_kol_photo, EDIT_MODEL
+    from google import genai
+    from google.genai import types as gtypes
+    from PIL import Image as PILImage
+
+    ts = make_ts()
+    client = genai.Client(api_key=os.getenv("GEMINI_API_KEY", ""))
+
+    contents = []
+    kol_path = get_kol_photo()
+    if kol_path:
+        try:
+            contents.append(PILImage.open(kol_path))
+            contents.append("Above: KOL reference. Match this person.")
+        except Exception:
+            pass
+    if product_image:
+        local = str(Path(".") / product_image.lstrip("/"))
+        if Path(local).exists():
+            try:
+                contents.append(PILImage.open(local))
+                contents.append("Above: Real product. Keep appearance identical.")
+            except Exception:
+                pass
+    contents.append(f"Create a new lifestyle photo: {scene} Vietnamese setting. No face shown, crop above chin. TikTok product photography.")
+
+    try:
+        result = client.models.generate_content(
+            model=EDIT_MODEL,
+            contents=contents,
+            config=gtypes.GenerateContentConfig(response_modalities=["IMAGE", "TEXT"]),
+        )
+        for part in result.candidates[0].content.parts:
+            if part.inline_data:
+                img_path = output_path(ts, "regen.png")
+                Path(str(img_path)).write_bytes(part.inline_data.data)
+                return {"image_url": output_url(ts, "regen.png")}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+    raise HTTPException(500, "No image generated")
+
+
+@app.get("/api/kol-status")
+async def kol_status():
+    """Check if KOL reference photo exists."""
+    from imagegen import get_kol_photo
+    return {"has_kol": get_kol_photo() is not None}
 
 
 # === Template System ===
@@ -459,8 +455,8 @@ async def auto_cut_video(
     max_duration: int = Form(30),
 ):
     """Auto-trim uploaded video to max_duration, extract best segment."""
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    input_path = str(Path(OUTPUT_DIR) / f"{ts}_raw.mp4")
+    ts = make_ts()
+    input_path = str(output_path(ts, "raw.mp4"))
     Path(input_path).write_bytes(await video.read())
 
     # Get video duration
@@ -471,11 +467,11 @@ async def auto_cut_video(
     )
     total_dur = float(probe.stdout.strip()) if probe.stdout.strip() else 0
 
-    output_path = str(Path(OUTPUT_DIR) / f"{ts}_cut.mp4")
+    cut_path = str(output_path(ts, "cut.mp4"))
 
     if total_dur <= max_duration:
         # Already short enough, just copy
-        Path(input_path).rename(output_path)
+        Path(input_path).rename(cut_path)
     else:
         # Take middle segment for best content
         start = max(0, (total_dur - max_duration) / 2)
@@ -483,13 +479,13 @@ async def auto_cut_video(
             ["ffmpeg", "-y", "-ss", str(start), "-i", input_path,
              "-t", str(max_duration), "-c:v", "libx264", "-c:a", "aac",
              "-vf", f"scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2",
-             output_path],
+             cut_path],
             capture_output=True, timeout=120,
         )
         Path(input_path).unlink(missing_ok=True)
 
     return {
-        "video_url": f"/output/{ts}_cut.mp4",
+        "video_url": output_url(ts, "cut.mp4"),
         "original_duration": round(total_dur, 1),
         "cut_duration": min(total_dur, max_duration),
     }
@@ -503,164 +499,54 @@ async def generate_video(
     selected_images: str = Form("[]"),
     music_file: str = Form(""),
     music_volume: int = Form(15),
-    max_duration: int = Form(30),
     aspect_ratio: str = Form("9:16"),
     voice_speed: int = Form(75),
-    img_transition: int = Form(3),
     logo_position: str = Form("top-right"),
     logo: UploadFile = File(default=None),
     subtitle_style: str = Form("tiktok"),
     highlight_color: str = Form("#FFD700"),
     img_effect: str = Form("ken_burns"),
+    img_style: str = Form("none"),
     zoom_ratio: int = Form(15),
     show_intro: str = Form("1"),
     show_outro: str = Form("1"),
     preview_only: str = Form("0"),
-    intro_bg: UploadFile = File(default=None),
-    outro_bg: UploadFile = File(default=None),
+    intro_bg_url: str = Form(""),
+    outro_bg_url: str = Form(""),
     music_upload: UploadFile = File(default=None),
     media: list[UploadFile] = File(default=[]),
 ):
     """Generate Reels/TikTok video with karaoke text over product images."""
-    data = json.loads(review_json)
-    platform_data = data.get(platform, data.get("tiktok", {}))
-    book = data.get("book", {})
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    from pipeline import VideoInput, render_video
 
-    # Resolve selected images to local paths
-    media_paths = []
-    for img_url in json.loads(selected_images)[:8]:
-        local = str(Path(".") / img_url.lstrip("/"))
-        if Path(local).exists():
-            media_paths.append(local)
-
-    # Add uploaded files
+    # Read uploaded files into bytes (can't pass UploadFile to pipeline)
+    uploaded_media = []
     if media and media[0].filename:
-        media_dir = Path(OUTPUT_DIR) / f"{ts}_video_media"
-        media_dir.mkdir(parents=True, exist_ok=True)
-        for i, f in enumerate(media[:8]):
-            ext = Path(f.filename).suffix or ".jpg"
-            p = media_dir / f"media_{i}{ext}"
-            p.write_bytes(await f.read())
-            media_paths.append(str(p))
+        for f in media[:8]:
+            uploaded_media.append((f.filename, await f.read()))
 
-    media_paths = media_paths[:8]
-
-    # Fallback: product_images from review data
-    if not media_paths and data.get("product_images"):
-        for img_url in data["product_images"][:4]:
-            local = str(Path(".") / img_url.lstrip("/"))
-            if Path(local).exists():
-                media_paths.append(local)
-
-    # Fallback: PDF cover
-    cover_path = None
-    if not media_paths and pdf_path and Path(pdf_path).exists():
-        cover_path = str(Path(OUTPUT_DIR) / f"{ts}_cover.png")
-        cover_path = _extract_cover_from_pdf(pdf_path, cover_path)
-
-    # Audio
-    audio_url = platform_data.get("audio_url", "")
-    if audio_url:
-        audio_path = str(Path(OUTPUT_DIR) / audio_url.split("/")[-1])
-    else:
-        audio_path = str(Path(OUTPUT_DIR) / f"{ts}_{platform}.mp3")
-        await generate_audio(platform_data.get("social_post", ""), audio_path, rate=f"+{voice_speed}%")
-
-    # Download/save music
-    local_music = None
-    if music_upload and music_upload.filename:
-        local_music = str(Path(OUTPUT_DIR) / f"{ts}_music.mp3")
-        Path(local_music).write_bytes(await music_upload.read())
-    elif music_file and music_file.startswith("http"):
-        import httpx as hx
-        local_music = str(Path(OUTPUT_DIR) / f"{ts}_music.mp3")
-        r = hx.get(music_file, timeout=30, follow_redirects=True)
-        if r.status_code == 200:
-            Path(local_music).write_bytes(r.content)
-        else:
-            local_music = None
-    elif music_file:
-        local_music = music_file
-
-    # Save logo if uploaded
-    logo_path = None
-    if logo and logo.filename:
-        logo_path = str(Path(OUTPUT_DIR) / f"{ts}_logo.png")
-        Path(logo_path).write_bytes(await logo.read())
-
-    # Save intro/outro backgrounds
-    intro_bg_path = None
-    if intro_bg and intro_bg.filename:
-        intro_bg_path = str(Path(OUTPUT_DIR) / f"{ts}_intro_bg.png")
-        Path(intro_bg_path).write_bytes(await intro_bg.read())
-    outro_bg_path = None
-    if outro_bg and outro_bg.filename:
-        outro_bg_path = str(Path(OUTPUT_DIR) / f"{ts}_outro_bg.png")
-        Path(outro_bg_path).write_bytes(await outro_bg.read())
-
-    # Generate video
-    video_path = str(Path(OUTPUT_DIR) / f"{ts}_{platform}.mp4")
-    generate_tiktok_video(
-        audio_path=audio_path,
-        output_path=video_path,
-        book_title=book.get("title", ""),
-        social_post=platform_data.get("social_post", ""),
-        hook=platform_data.get("hook", ""),
-        key_points=platform_data.get("key_points", []),
-        cta=platform_data.get("cta", ""),
-        cover_image_path=cover_path,
-        media_paths=media_paths,
-        music_file=local_music,
-        music_volume=max(0, min(50, music_volume)) / 100,
-        max_duration=max(15, min(60, max_duration)),
+    inp = VideoInput(
+        review_data=json.loads(review_json),
+        platform=platform,
+        selected_images=json.loads(selected_images),
+        uploaded_media=uploaded_media,
+        music_url=music_file,
+        music_data=(await music_upload.read()) if music_upload and music_upload.filename else None,
+        music_volume=music_volume,
         aspect_ratio=aspect_ratio,
-        img_transition=max(1, min(10, img_transition)),
-        logo_path=logo_path,
+        voice_speed=voice_speed,
+        logo_data=(await logo.read()) if logo and logo.filename else None,
         logo_position=logo_position,
         subtitle_style=subtitle_style,
         highlight_color=highlight_color,
         img_effect=img_effect,
-        zoom_ratio=max(5, min(100, zoom_ratio)) / 100,
+        img_style=img_style,
+        zoom_ratio=zoom_ratio,
         show_intro=show_intro == "1",
         show_outro=show_outro == "1",
         preview_only=preview_only == "1",
-        intro_bg_path=intro_bg_path,
-        outro_bg_path=outro_bg_path,
+        intro_bg_url=intro_bg_url,
+        outro_bg_url=outro_bg_url,
+        pdf_path=pdf_path,
     )
-
-    # Cleanup
-    if local_music and local_music.startswith(str(OUTPUT_DIR)):
-        Path(local_music).unlink(missing_ok=True)
-    if cover_path and Path(cover_path).exists():
-        Path(cover_path).unlink(missing_ok=True)
-    if logo_path and Path(logo_path).exists():
-        Path(logo_path).unlink(missing_ok=True)
-    if intro_bg_path and Path(intro_bg_path).exists():
-        Path(intro_bg_path).unlink(missing_ok=True)
-    if outro_bg_path and Path(outro_bg_path).exists():
-        Path(outro_bg_path).unlink(missing_ok=True)
-
-    if preview_only == "1":
-        preview_img = str(Path(OUTPUT_DIR) / f"{ts}_preview.png")
-        return {"preview_url": f"/output/{ts}_preview.png"} if Path(preview_img).exists() else {"preview_url": f"/output/{ts}_{platform}.mp4"}
-
-    # Generate SRT
-    from video import _split_sentences, _get_duration as vid_duration
-    srt_path = str(Path(OUTPUT_DIR) / f"{ts}_{platform}.srt")
-    text = platform_data.get("social_post", "")
-    dur = vid_duration(audio_path) or 30
-    sentences = _split_sentences(text)
-    char_counts = [max(1, len(s)) for s in sentences]
-    total_chars = sum(char_counts)
-    with open(srt_path, "w") as f:
-        t = 0.0
-        for i, s in enumerate(sentences):
-            sd = (char_counts[i] / total_chars) * dur
-            h1, m1, s1 = int(t//3600), int(t%3600//60), t%60
-            t2 = t + sd
-            h2, m2, s2 = int(t2//3600), int(t2%3600//60), t2%60
-            f.write(f"{i+1}\n{h1:02d}:{m1:02d}:{s1:06.3f} --> {h2:02d}:{m2:02d}:{s2:06.3f}\n{s}\n\n")
-            t = t2
-
-    return {"video_url": f"/output/{ts}_{platform}.mp4", "srt_url": f"/output/{ts}_{platform}.srt"}
+    return await render_video(inp)

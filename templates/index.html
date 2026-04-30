@@ -48,8 +48,32 @@
         <select id="gemini-model" onchange="fetch('/api/set-model?model='+this.value)" style="padding:6px 10px;border-radius:6px;border:1.5px solid #ddd;font-size:.85em">
             <option>Đang tải...</option>
         </select>
+        <span style="border-left:1px solid #ddd;height:20px"></span>
+        <span style="font-size:.85em">📦 Kéo vào bookmark bar →</span>
+        <a id="shopee-bookmarklet" href="javascript:(function(){try{var%20CDN='susercontent.com',seen={},imgs=[],vids=[];function%20addImg(s){if(!s||s.indexOf(CDN)<0||seen[s])return;s=s.replace(/@resize_w[^\s]*/g,'').replace(/\?.*$/,'');if(!seen[s]){seen[s]=1;imgs.push(s);}}function%20addVid(s){if(!s||seen[s])return;if(s.indexOf(CDN)>-1||s.indexOf('.mp4')>-1){seen[s]=1;vids.push(s);}}var%20hero=document.querySelector('img[elementtiming*=hero],img[alt*=Product]');if(hero){var%20c=hero.parentElement;for(var%20i=0;i<8&&c;i++){if(c.querySelectorAll('img[src*=susercontent]').length>=3)break;c=c.parentElement;}if(c)c.querySelectorAll('img').forEach(function(el){addImg(el.src);addImg(el.dataset.src);if(el.srcset)(el.srcset.match(/https?:\/\/[^\s,]+/g)||[]).forEach(addImg);});}var%20v=document.querySelector('video%20source,video[src]');if(v)addVid(v.src||'');var%20title=document.title.split('-Shopee')[0].split('|')[0].trim();var%20data=JSON.stringify({images:imgs,videos:vids,title:title,url:location.href});navigator.clipboard.writeText('SHOPEE_DATA:'+data).then(function(){alert('\u2705%20'+imgs.length+'%20ảnh%20+%20'+vids.length+'%20video!\nBấm%20📋%20Dán%20từ%20Shopee%20trên%20Bot');}).catch(function(){window.prompt('Copy:','SHOPEE_DATA:'+data);});}catch(e){alert(e.message);}})();"
+           style="background:#ee4d2d;color:#fff;padding:6px 14px;border-radius:6px;font-size:.85em;font-weight:600;text-decoration:none;cursor:grab;white-space:nowrap"
+           title="Kéo nút này vào thanh bookmark. Mở trang sản phẩm Shopee rồi bấm để lấy ảnh & thông tin.">📦 Lấy ảnh Shopee</a>
+        <button onclick="pasteShopeeData()" class="btn" style="padding:6px 14px;font-size:.85em;margin:0;background:#16213e">📋 Dán từ Shopee</button>
+        <span style="border-left:1px solid #ddd;height:20px"></span>
+        <label style="font-size:.85em;cursor:pointer">
+            📸 <span id="kol-status">KOL</span>
+            <input type="file" accept="image/*" style="display:none" onchange="uploadKol(this)">
+        </label>
+        <span id="shopee-poll-status" style="font-size:.8em;color:#999"></span>
     </div>
     <script>
+    fetch('/api/kol-status').then(r=>r.json()).then(d=>{
+        document.getElementById('kol-status').textContent = d.has_kol ? 'KOL ✅' : 'KOL (chưa có)';
+    }).catch(()=>{});
+    function uploadKol(input) {
+        if (!input.files[0]) return;
+        var fd = new FormData();
+        fd.append('file', input.files[0]);
+        fetch('/upload-kol', {method:'POST', body:fd}).then(r=>r.json()).then(d=>{
+            document.getElementById('kol-status').textContent = 'KOL ✅';
+            alert(d.message);
+        });
+    }
     fetch('/api/models').then(r=>r.json()).then(d=>{
         var sel=document.getElementById('gemini-model');
         sel.innerHTML='';
@@ -63,28 +87,10 @@
     });
     </script>
 
-    <div style="background:#fff;padding:12px 20px;border-radius:8px;margin-bottom:16px;box-shadow:0 2px 8px rgba(0,0,0,.06)">
-        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-            <span style="font-size:.9em">🎙️ Voice Clone:</span>
-            <span id="voice-badge" style="font-size:.85em;color:#666">Đang kiểm tra...</span>
-        </div>
-        <div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin-top:8px">
-            <div>
-                <label style="font-size:.8em;color:#666">File giọng (6-30s):</label>
-                <input type="file" id="voice-file" accept="audio/*,.wav,.mp3,.m4a" style="font-size:.85em">
-            </div>
-            <div style="flex:1;min-width:200px">
-                <label style="font-size:.8em;color:#666">Nội dung đang nói trong file:</label>
-                <input type="text" id="voice-ref-text" placeholder="Gõ lại nội dung trong file giọng mẫu..." style="padding:6px 10px;border:1.5px solid #ddd;border-radius:6px;width:100%;font-size:.85em">
-            </div>
-            <button class="btn" onclick="uploadVoice()" style="padding:6px 16px;font-size:.85em">💾 Lưu</button>
-        </div>
-    </div>
-
     <div class="tabs">
         <button class="tab" data-tab="pdf" onclick="switchTab('pdf')">📄 Upload PDF</button>
         <button class="tab active" data-tab="url" onclick="switchTab('url')">🔗 Link Shopee</button>
-        <button class="tab" data-tab="manual" onclick="switchTab('manual')">✏️ Nhập tay</button>
+        <button class="tab" data-tab="batch" onclick="switchTab('batch')">📦 Shopee Batch</button>
     </div>
 
     <!-- PDF Upload -->
@@ -94,9 +100,7 @@
             <input type="file" name="file" accept=".pdf" required>
             <label>Đối tượng:</label>
             <select name="audience">
-                {% for key, val in audiences.items() %}
-                <option value="{{ key }}">{{ val.name }}</option>
-                {% endfor %}
+                <option value="custom">✏️ Tự nhập...</option>
             </select>
             <label>Độ dài review: <span id="wc-pdf-val">150</span> từ</label>
             <input type="range" name="word_count" min="50" max="200" value="150" oninput="document.getElementById('wc-pdf-val').textContent=this.value">
@@ -117,13 +121,10 @@
             <label>Đối tượng khách hàng:</label>
             <div id="persona-list">
                 <select name="audience" id="audience-select" onchange="document.getElementById('custom-persona').style.display=this.value==='custom'?'block':'none'">
-                    {% for key, val in audiences.items() %}
-                    <option value="{{ key }}">{{ val.name }}</option>
-                    {% endfor %}
-                    <option value="custom">✏️ Tự nhập...</option>
+                    <option value="custom" selected>✏️ Tự nhập...</option>
                 </select>
             </div>
-            <div id="custom-persona" style="display:none;margin-top:8px;padding:12px;background:#f8f9fa;border-radius:8px">
+            <div id="custom-persona" style="margin-top:8px;padding:12px;background:#f8f9fa;border-radius:8px">
                 <input type="text" id="cp-name" placeholder="Tên nhóm KH (VD: Sinh viên đại học)" style="margin-bottom:6px">
                 <input type="text" id="cp-tone" placeholder="Giọng văn (VD: trẻ trung, năng động)" style="margin-bottom:6px">
                 <input type="text" id="cp-focus" placeholder="Trọng tâm (VD: giá rẻ, tiện lợi)" >
@@ -142,28 +143,44 @@
         </form>
     </div>
 
-    <!-- Manual -->
-    <div id="panel-manual" class="panel">
-        <form id="form-manual">
-            <label>Tên sách:</label>
-            <input type="text" name="title" placeholder="VD: Đắc Nhân Tâm" required>
-            <label>Tác giả:</label>
-            <input type="text" name="author" placeholder="VD: Dale Carnegie">
-            <label>Mô tả / Nội dung chính:</label>
-            <textarea name="description" placeholder="Tóm tắt nội dung sách..."></textarea>
-            <label>Đối tượng:</label>
-            <select name="audience">
-                {% for key, val in audiences.items() %}
-                <option value="{{ key }}">{{ val.name }}</option>
-                {% endfor %}
-            </select>
-            <label>Nền tảng:</label>
-            <select name="platform">
-                <option value="facebook">Facebook</option>
-                <option value="tiktok">TikTok</option>
-            </select>
-            <button type="submit" class="btn">🚀 Tạo Review</button>
-        </form>
+    <!-- Shopee Batch -->
+    <div id="panel-batch" class="panel">
+        <p style="font-size:.85em;color:#666;margin-bottom:12px">Dán nhiều link Shopee (mỗi dòng 1 link) hoặc dùng bookmarklet trên trang tìm kiếm Shopee</p>
+        <textarea id="batch-urls" rows="6" placeholder="https://shopee.vn/product-1-i.123.456&#10;https://shopee.vn/product-2-i.789.012&#10;https://shopee.vn/product-3-i.345.678" style="width:100%;padding:10px;border:1.5px solid #ddd;border-radius:8px;font-size:.9em;font-family:monospace"></textarea>
+        <div style="display:flex;gap:12px;margin-top:12px;align-items:center;flex-wrap:wrap">
+            <button onclick="pasteBatchFromShopee()" class="btn" style="padding:8px 16px;font-size:.9em;background:#16213e">📋 Dán từ Shopee</button>
+            <label style="font-size:.85em">Đối tượng:
+                <select id="batch-audience" onchange="document.getElementById('batch-custom-persona').style.display=this.value==='custom'?'block':'none'" style="padding:6px 10px;border-radius:6px;border:1.5px solid #ddd;font-size:.85em">
+                    <option value="auto" selected>🤖 Tự động (2 personas/SP)</option>
+                    <option value="custom">✏️ Tự nhập...</option>
+                    {% for key, val in audiences.items() %}
+                    <option value="{{ key }}">{{ val.name }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label style="font-size:.85em">🗣️ Giọng:
+                <select id="batch-voice" style="padding:6px 10px;border-radius:6px;border:1.5px solid #ddd;font-size:.85em">
+                    <option value="gtts">gTTS (nhanh)</option>
+                </select>
+            </label>
+            <label style="font-size:.85em">📝 TikTok: <span id="batch-wc-val">150</span> từ
+                <input type="range" id="batch-word-count" min="50" max="200" value="150" step="10" style="width:80px" oninput="document.getElementById('batch-wc-val').textContent=this.value">
+            </label>
+        </div>
+        <div style="display:flex;gap:12px;margin-top:8px;align-items:center;flex-wrap:wrap">
+            <div id="batch-custom-persona" style="display:none;padding:10px;background:#f8f9fa;border-radius:8px;flex:1">
+                <input type="text" id="batch-cp-name" placeholder="Nhóm KH (VD: Phụ huynh có con nhỏ)" style="margin-bottom:4px;width:100%">
+                <input type="text" id="batch-cp-tone" placeholder="Giọng văn (VD: thân thiện, dễ hiểu)" style="margin-bottom:4px;width:100%">
+                <input type="text" id="batch-cp-focus" placeholder="Trọng tâm (VD: giá rẻ, chất lượng)" style="width:100%">
+            </div>
+            <button onclick="startBatchReview()" class="btn" style="padding:8px 20px;font-size:1em" id="btn-batch-review">🚀 Tạo Review hàng loạt</button>
+        </div>
+        <div id="batch-progress" style="margin-top:16px"></div>
+        <div id="batch-results" style="margin-top:12px"></div>
+        <details style="margin-top:16px">
+            <summary style="cursor:pointer;font-size:.85em;color:#666">🔧 Dev Log</summary>
+            <pre id="batch-log" style="background:#1a1a2e;color:#0f0;padding:12px;border-radius:8px;font-size:.8em;max-height:300px;overflow-y:auto;margin-top:8px;white-space:pre-wrap"></pre>
+        </details>
     </div>
 
     <div class="spinner" id="spinner">
@@ -197,27 +214,42 @@ function copyText(id) {
 }
 
 var _elVoicesLoaded = false;
+var _elVoicesCache = [];
 function toggleELVoices(sel, platform) {
     var elSel = document.getElementById('el-voice-' + platform);
     if (sel.value === 'elevenlabs') {
         elSel.style.display = '';
-        if (!_elVoicesLoaded) {
+        if (_elVoicesLoaded && _elVoicesCache.length) {
+            // Re-populate this select from cache (DOM may have been re-created)
+            if (!elSel.dataset.populated) {
+                elSel.innerHTML = '';
+                for (var j = 0; j < _elVoicesCache.length; j++) {
+                    var v = _elVoicesCache[j];
+                    var opt = document.createElement('option');
+                    opt.value = v.id;
+                    opt.textContent = v.name + (v.category ? ' (' + v.category + ')' : '');
+                    elSel.appendChild(opt);
+                }
+                elSel.dataset.populated = '1';
+            }
+        } else if (!_elVoicesLoaded) {
             elSel.innerHTML = '<option value="">Đang tải giọng...</option>';
             fetch('/api/elevenlabs-voices').then(function(r){ return r.json(); }).then(function(d){
                 _elVoicesLoaded = true;
+                _elVoicesCache = d.voices || [];
                 var allSels = document.querySelectorAll('[id^="el-voice-"]');
                 for (var i = 0; i < allSels.length; i++) {
                     var s = allSels[i];
                     s.innerHTML = '';
-                    var voices = d.voices || [];
-                    for (var j = 0; j < voices.length; j++) {
-                        var v = voices[j];
+                    for (var j = 0; j < _elVoicesCache.length; j++) {
+                        var v = _elVoicesCache[j];
                         var opt = document.createElement('option');
                         opt.value = v.id;
                         opt.textContent = v.name + (v.category ? ' (' + v.category + ')' : '');
                         s.appendChild(opt);
                     }
-                    if (voices.length === 0) s.innerHTML = '<option value="">Không có giọng</option>';
+                    s.dataset.populated = '1';
+                    if (_elVoicesCache.length === 0) s.innerHTML = '<option value="">Không có giọng</option>';
                 }
             }).catch(function(e){
                 elSel.innerHTML = '<option value="">Lỗi: ' + e.message + '</option>';
@@ -242,6 +274,7 @@ async function generateSpeech(platform) {
         fd.append('text', text);
         fd.append('platform', platform);
         fd.append('voice_type', voiceType);
+        fd.append('speed', document.getElementById('spd-' + platform)?.value || '125');
         var elVoiceSel = document.getElementById('el-voice-' + platform);
         if (voiceType === 'elevenlabs' && elVoiceSel?.value) fd.append('elevenlabs_voice_id', elVoiceSel.value);
         const resp = await fetch('/generate-speech', { method: 'POST', body: fd });
@@ -259,25 +292,6 @@ async function generateSpeech(platform) {
         btn.textContent = '🔊 Tạo giọng nói';
     }
 }
-
-async function uploadVoice() {
-    const file = document.getElementById('voice-file').files[0];
-    if (!file) { alert('Chọn file giọng mẫu trước!'); return; }
-    const refText = document.getElementById('voice-ref-text').value.trim();
-    const badge = document.getElementById('voice-badge');
-    badge.textContent = '⏳ Đang upload...';
-    try {
-        const fd = new FormData();
-        fd.append('file', file);
-        fd.append('ref_text', refText);
-        const resp = await fetch('/upload-voice', { method: 'POST', body: fd });
-        const data = await resp.json();
-        badge.textContent = resp.ok ? '✅ Đã lưu mẫu giọng' : '❌ Lỗi';
-    } catch(e) { badge.textContent = '❌ ' + e.message; }
-}
-fetch('/api/voice-status').then(r=>r.json()).then(d=>{
-    document.getElementById('voice-badge').textContent = d.has_voice ? '✅ Đã có mẫu giọng' : '⚠️ Upload WAV/MP3 (6-30s) để clone giọng';
-}).catch(()=>{});
 
 function previewUploads(input) {
     const preview = document.getElementById('upload-preview');
@@ -319,6 +333,10 @@ function renderResult(data) {
     const r = document.getElementById('result');
     let html = '';
 
+    // Clear bookmarklet preview (result section replaces it)
+    const bmPreview = document.getElementById('bookmarklet-preview');
+    if (bmPreview) bmPreview.innerHTML = '';
+
     // Book info
     if (data.book) {
         html += `<div class="book-meta">
@@ -330,34 +348,10 @@ function renderResult(data) {
         </div>`;
     }
 
-    // Product images gallery with selection
+    // Product images — store for video generation and populate intro/outro pickers
     const imgs = data.product_images || data.product_images_original || [];
     const localImgs = data.product_images || [];
     if (imgs.length > 0) {
-        html += `<div class="result-card">
-            <h3>🖼️ Ảnh & Video sản phẩm (${imgs.length})</h3>
-            <div style="margin-bottom:10px">
-                <label style="display:inline;font-weight:normal;cursor:pointer">
-                    <input type="checkbox" id="select-all-imgs" onchange="toggleAllImages(this.checked)"> Chọn tất cả
-                </label>
-                <button class="btn" onclick="downloadSelectedImages()" style="padding:6px 16px;font-size:.85em;margin:0 0 0 12px">⬇️ Tải ảnh đã chọn</button>
-            </div>
-            <div style="display:flex;flex-wrap:wrap;gap:12px;padding:10px 0" id="image-gallery">
-                ${imgs.map((img, i) => {
-                    const local = localImgs[i] || '';
-                    const isVideo = img.match(/\.(mp4|mov|webm)/i);
-                    return `<div style="position:relative;flex-shrink:0">
-                        <input type="checkbox" class="img-check" data-url="${local || img}" data-index="${i}"
-                               style="position:absolute;top:6px;left:6px;width:20px;height:20px;z-index:2;cursor:pointer">
-                        ${isVideo
-                            ? `<video src="${local || img}" style="height:180px;border-radius:8px" controls></video>`
-                            : `<img src="${local || img}" style="height:180px;border-radius:8px;cursor:pointer;border:2px solid transparent"
-                                   onclick="window.open('${local || img}','_blank')" title="Ảnh ${i+1}">`
-                        }
-                    </div>`;
-                }).join('')}
-            </div>
-        </div>`;
         window._productImages = localImgs.length ? localImgs : imgs;
     }
 
@@ -377,13 +371,14 @@ function renderResult(data) {
             <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
                 <select id="voice-${p||'single'}" style="padding:6px 10px;border-radius:6px;border:1.5px solid #ddd;font-size:.85em" onchange="toggleELVoices(this,'${p||'single'}')">
                     <option value="gtts">🤖 gTTS (nhanh)</option>
-                    <option value="vieneu">🇻🇳 VieNeu (tự nhiên)</option>
-                    <option value="vieneu-clone">🎙️ Clone giọng (VieNeu)</option>
                     <option value="elevenlabs">🎙️ Clone giọng (ElevenLabs)</option>
                 </select>
                 <select id="el-voice-${p||'single'}" style="padding:6px 10px;border-radius:6px;border:1.5px solid #ddd;font-size:.85em;display:none">
                     <option value="">Đang tải giọng...</option>
                 </select>
+                <label style="font-size:.8em;display:inline-flex;align-items:center;gap:4px">🗣️<span id="spd-val-${p||'single'}">{{default_voice_speed}}</span>%
+                    <input type="range" id="spd-${p||'single'}" min="50" max="200" value="{{default_voice_speed}}" step="10" style="width:80px" oninput="document.getElementById('spd-val-${p||'single'}').textContent=this.value">
+                </label>
                 <button class="btn" onclick="generateSpeech('${p||'single'}')" id="btn-speech-${p||'single'}" style="padding:8px 20px;font-size:.9em">
                     🔊 Tạo giọng nói
                 </button>
@@ -416,7 +411,6 @@ function renderResult(data) {
                 <select id="video-platform" style="padding:8px 12px;border-radius:8px;border:1.5px solid #ddd">
                     ${data.tiktok ? '<option value="tiktok">🎵 TikTok</option>' : ''}
                     ${data.facebook ? '<option value="facebook">📘 Facebook Reels</option>' : ''}
-                    <option value="tiktok">📺 YouTube Shorts</option>
                 </select>
                 <select id="video-aspect" style="padding:8px 12px;border-radius:8px;border:1.5px solid #ddd">
                     <option value="9:16">📱 9:16 (TikTok/Reels)</option>
@@ -426,20 +420,8 @@ function renderResult(data) {
             </div>
             <div style="display:flex;gap:20px;margin-bottom:12px;flex-wrap:wrap">
                 <label style="font-size:.85em;display:flex;align-items:center;gap:6px">
-                    ⏱️ Thời lượng: <span id="dur-val">30</span>s
-                    <input type="range" id="video-duration" min="15" max="60" value="30" step="5" style="width:100px" oninput="document.getElementById('dur-val').textContent=this.value">
-                </label>
-                <label style="font-size:.85em;display:flex;align-items:center;gap:6px">
                     🔊 Nhạc nền: <span id="vol-val">15</span>%
                     <input type="range" id="music-volume" min="0" max="50" value="15" step="5" style="width:100px" oninput="document.getElementById('vol-val').textContent=this.value">
-                </label>
-                <label style="font-size:.85em;display:flex;align-items:center;gap:6px">
-                    🗣️ Tốc độ giọng: <span id="voice-speed-val">75</span>%
-                    <input type="range" id="voice-speed" min="0" max="150" value="75" step="25" style="width:100px" oninput="document.getElementById('voice-speed-val').textContent=this.value">
-                </label>
-                <label style="font-size:.85em;display:flex;align-items:center;gap:6px">
-                    🖼️ Chuyển ảnh: <span id="img-speed-val">3</span>s
-                    <input type="range" id="img-transition" min="1" max="10" value="3" step="1" style="width:100px" oninput="document.getElementById('img-speed-val').textContent=this.value">
                 </label>
             </div>
             <div style="display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap">
@@ -454,35 +436,52 @@ function renderResult(data) {
                 <label style="font-size:.85em">🎨 Màu highlight:
                     <input type="color" id="highlight-color" value="#FFD700" style="width:32px;height:28px;border:none;cursor:pointer;vertical-align:middle">
                 </label>
-                <label style="font-size:.85em">🖼️ Hiệu ứng ảnh:
-                    <select id="img-effect" style="padding:6px 10px;border-radius:6px;border:1.5px solid #ddd;font-size:.85em">
-                        <optgroup label="Chuyển động">
-                            <option value="ken_burns">Ken Burns (zoom+pan)</option>
+                <label style="font-size:.85em">🎬 Phong cách video:
+                    <select id="video-preset" onchange="applyPreset(this.value)" style="padding:6px 10px;border-radius:6px;border:1.5px solid #ddd;font-size:.85em">
+                        <option value="product" selected>📦 Sản phẩm — Ken Burns + Vignette</option>
+                        <option value="tiktok">⚡ TikTok — Zoom nhịp + Flash</option>
+                        <option value="luxury">✨ Cao cấp — Parallax + Soft Glow</option>
+                        <option value="vintage">🎞️ Vintage — Ken Burns + Sepia</option>
+                        <option value="warm">🧸 Ấm áp — Ken Burns + Phủ màu</option>
+                        <option value="focus">🎯 Tập trung SP — Zoom trung tâm</option>
+                        <option value="unboxing">📦 Unboxing — Pixelate Reveal</option>
+                        <option value="genz">🔥 Gen Z — Rung lắc + Glitch</option>
+                        <option value="custom">⚙️ Tùy chỉnh...</option>
+                    </select>
+                </label>
+                <div id="custom-effects" style="display:none;margin-top:4px">
+                    <label style="font-size:.8em">Chuyển động:
+                        <select id="img-effect" style="padding:4px 8px;border-radius:4px;border:1px solid #ddd;font-size:.85em">
+                            <option value="ken_burns">Ken Burns</option>
+                            <option value="crossfade">Crossfade</option>
+                            <option value="zoom_center">Zoom trung tâm</option>
+                            <option value="parallax">Parallax</option>
                             <option value="slide_lr">Trượt ngang</option>
                             <option value="slide_ud">Trượt dọc</option>
                             <option value="bounce_zoom">Zoom nhịp điệu</option>
-                        </optgroup>
-                        <optgroup label="Màu sắc">
-                            <option value="none">Không hiệu ứng</option>
+                            <option value="shake">Rung lắc</option>
+                            <option value="rotate_tilt">Xoay nhẹ</option>
+                            <option value="none">Không</option>
+                        </select>
+                    </label>
+                    <label style="font-size:.8em;margin-left:8px">Phong cách:
+                        <select id="img-style" style="padding:4px 8px;border-radius:4px;border:1px solid #ddd;font-size:.85em">
+                            <option value="none">Không</option>
+                            <option value="vignette">Vignette</option>
+                            <option value="soft_glow">Soft Glow</option>
+                            <option value="sepia">Sepia</option>
                             <option value="grayscale">Đen trắng</option>
-                            <option value="sepia">Sepia/Vintage</option>
-                            <option value="saturation">Màu rực rỡ</option>
-                            <option value="contrast">Tương phản cao</option>
                             <option value="color_tint">Phủ màu</option>
-                            <option value="color_pop">Color Pop (giữ 1 màu)</option>
-                        </optgroup>
-                        <optgroup label="Hiệu ứng đặc biệt">
-                            <option value="blur_bg">Blur nền</option>
-                            <option value="brightness">Sáng hơn</option>
-                            <option value="darken">Tối hơn</option>
-                            <option value="vignette">Vignette (tối viền)</option>
-                            <option value="soft_glow">Soft Glow (mờ ảo)</option>
-                            <option value="mirror">Gương phản chiếu</option>
-                            <option value="pixelate_reveal">Pixelate → Rõ nét</option>
-                            <option value="split_screen">Chia đôi màn hình</option>
-                        </optgroup>
-                    </select>
-                </label>
+                            <option value="color_pop">Color Pop</option>
+                            <option value="saturation">Rực rỡ</option>
+                            <option value="contrast">Tương phản</option>
+                            <option value="flash">Flash</option>
+                            <option value="glitch">Glitch</option>
+                            <option value="pixelate_reveal">Pixelate Reveal</option>
+                            <option value="before_after">Before/After</option>
+                        </select>
+                    </label>
+                </div>
                 <label style="font-size:.85em;display:flex;align-items:center;gap:6px">
                     🔍 Zoom: <span id="zoom-val">15</span>%
                     <input type="range" id="zoom-ratio" min="5" max="100" value="15" step="5" style="width:80px" oninput="document.getElementById('zoom-val').textContent=this.value">
@@ -490,26 +489,35 @@ function renderResult(data) {
             </div>
             <div style="display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
                 <label style="font-size:.85em;display:flex;align-items:center;gap:4px">
-                    <input type="checkbox" id="show-intro" checked> 📌 Intro
-                    <input type="file" id="intro-bg" accept="image/*" style="font-size:.8em;max-width:150px">
+                    <input type="checkbox" id="show-intro"> 📌 Intro:
+                    <select id="intro-bg-select" style="font-size:.8em;padding:2px 6px;border-radius:4px;border:1px solid #ddd">
+                        <option value="">Mặc định</option>
+                        ${vidImgs.filter(u => !u.match(/\\.(mp4|mov|webm)/i)).map((u, i) => `<option value="${u}">Ảnh ${i+1}</option>`).join('')}
+                    </select>
                 </label>
                 <label style="font-size:.85em;display:flex;align-items:center;gap:4px">
-                    <input type="checkbox" id="show-outro" checked> 📢 Outro
-                    <input type="file" id="outro-bg" accept="image/*" style="font-size:.8em;max-width:150px">
+                    <input type="checkbox" id="show-outro"> 📢 Outro:
+                    <select id="outro-bg-select" style="font-size:.8em;padding:2px 6px;border-radius:4px;border:1px solid #ddd">
+                        <option value="">Mặc định</option>
+                        ${vidImgs.filter(u => !u.match(/\\.(mp4|mov|webm)/i)).map((u, i) => `<option value="${u}">Ảnh ${i+1}</option>`).join('')}
+                    </select>
                 </label>
             </div>
             ${vidImgs.length > 0 ? `
                 <p style="font-size:.85em;color:#666;margin-bottom:8px">Chọn tối đa 8 ảnh cho video:</p>
                 <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px" id="vid-img-gallery">
-                    ${vidImgs.map((img, i) => `
-                        <label style="position:relative;cursor:pointer">
+                    ${vidImgs.map((img, i) => {
+                        const isAI = img.includes('ai_images');
+                        return `<label style="position:relative;cursor:pointer">
                             <input type="checkbox" class="vid-img-check" value="${img}" checked
                                    style="position:absolute;top:4px;left:4px;width:18px;height:18px;z-index:2"
                                    onchange="limitVideoImages(this)">
-                            <img src="${img}" style="height:100px;border-radius:6px;border:2px solid #e94560">
+                            ${isAI ? '<span style="position:absolute;top:4px;right:28px;background:#7c3aed;color:#fff;font-size:10px;padding:1px 5px;border-radius:4px;z-index:3">🤖 AI</span>' : ''}
+                            <img src="${img}" style="height:100px;border-radius:6px;border:2px solid ${isAI ? '#7c3aed' : '#e94560'}">
+                            ${isAI ? '<button type="button" onclick="regenAiImage(this,\\''+img+'\\')" style="position:absolute;bottom:4px;right:4px;background:#7c3aed;color:#fff;border:none;border-radius:4px;padding:2px 6px;cursor:pointer;font-size:11px;z-index:3">🔄</button>' : ''}
                             <button type="button" onclick="removeVidImg(this.parentElement)" style="position:absolute;top:-6px;right:-6px;background:#e94560;color:#fff;border:none;border-radius:50%;width:20px;height:20px;cursor:pointer;font-size:12px;line-height:20px;padding:0;z-index:3">✕</button>
-                        </label>
-                    `).join('')}
+                        </label>`;
+                    }).join('')}
                 </div>
             ` : '<p style="font-size:.85em;color:#999;margin-bottom:8px">Chưa có ảnh — upload ảnh ở trên hoặc thêm bên dưới</p>'}
             <label style="font-weight:normal;font-size:.85em;color:#666">Hoặc upload thêm ảnh/video:
@@ -557,7 +565,7 @@ function renderResult(data) {
                     🎬 Tạo Video
                 </button>
                 <button class="btn" id="btn-batch" onclick="batchGenerate()" style="background:#6a0572;padding:12px 24px">
-                    📦 Tạo tất cả (TikTok + Reels + YouTube)
+                    📦 Tạo tất cả (TikTok + Reels)
                 </button>
             </div>
             <div id="preview-result" style="margin-top:12px"></div>
@@ -565,27 +573,7 @@ function renderResult(data) {
 
             <!-- Template System -->
             <div style="margin-top:16px;padding-top:12px;border-top:1px solid #eee">
-                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                    <span style="font-size:.85em;font-weight:600">💾 Templates:</span>
-                    <input type="text" id="template-name" placeholder="Tên template..." style="padding:6px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:.85em;width:150px">
-                    <button class="btn" onclick="saveTemplate()" style="padding:6px 14px;font-size:.8em">Lưu</button>
-                    <select id="template-list" style="padding:6px 10px;border-radius:6px;border:1.5px solid #ddd;font-size:.85em">
-                        <option value="">Chọn template...</option>
-                    </select>
-                    <button class="btn" onclick="loadTemplate()" style="padding:6px 14px;font-size:.8em;background:#0f3460">Tải</button>
-                    <button class="btn" onclick="deleteTemplate()" style="padding:6px 14px;font-size:.8em;background:#666">Xóa</button>
                 </div>
-            </div>
-
-            <!-- Auto-cut Video -->
-            <div style="margin-top:12px;padding-top:12px;border-top:1px solid #eee">
-                <span style="font-size:.85em;font-weight:600">✂️ Auto-cut video sản phẩm:</span>
-                <div style="display:flex;gap:8px;align-items:center;margin-top:6px">
-                    <input type="file" id="autocut-video" accept="video/*" style="font-size:.85em">
-                    <button class="btn" onclick="autoCutVideo()" style="padding:6px 14px;font-size:.8em;background:#0f3460">✂️ Cắt</button>
-                    <span id="autocut-status" style="font-size:.85em;color:#666"></span>
-                </div>
-                <div id="autocut-result" style="margin-top:8px"></div>
             </div>
 
         </div>`;
@@ -638,7 +626,14 @@ document.getElementById('form-url').addEventListener('submit', e => {
     } else {
         caField.value = '';
     }
-    submitForm('/from-url', new FormData(e.target));
+    // Include bookmarklet images if available
+    const fd = new FormData(e.target);
+    if (window._shopeeBookmarkletData) {
+        const checked = document.querySelectorAll('.bm-img-check:checked');
+        const bmImgs = Array.from(checked).map(cb => cb.dataset.url);
+        fd.set('bookmarklet_images', JSON.stringify(bmImgs));
+    }
+    submitForm('/from-url', fd);
 });
 
 async function suggestPersonas() {
@@ -659,23 +654,14 @@ async function suggestPersonas() {
             const pJson = JSON.stringify(p).replace(/'/g, '&#39;').replace(/"/g, '&quot;');
             opts += `<option value="suggested-${i}" data-persona="${pJson}" ${i===0?'selected':''}>🎯 ${p.name}</option>`;
         });
-        opts += `<optgroup label="── Mặc định ──">`;
-        opts += `<option value="phu-huynh-lop-5">Phụ huynh có con lớp 5</option>`;
-        opts += `<option value="phu-huynh-mam-non">Phụ huynh có con mầm non</option>`;
-        opts += `<option value="hoc-sinh-thpt">Học sinh THPT</option>`;
-        opts += `</optgroup>`;
         opts += `<option value="custom">✏️ Tự nhập...</option>`;
         sel.innerHTML = opts;
         document.getElementById('custom-persona').style.display = 'none';
     } catch(e) {
-        sel.innerHTML = `<option value="phu-huynh-lop-5">Phụ huynh có con lớp 5</option><option value="phu-huynh-mam-non">Phụ huynh có con mầm non</option><option value="hoc-sinh-thpt">Học sinh THPT</option><option value="custom">✏️ Tự nhập...</option>`;
+        sel.innerHTML = `<option value="custom" selected>✏️ Tự nhập...</option>`;
+        document.getElementById('custom-persona').style.display = 'block';
     }
 }
-
-document.getElementById('form-manual').addEventListener('submit', e => {
-    e.preventDefault();
-    submitForm('/preview', new FormData(e.target));
-});
 
 async function fetchImages() {
     const urlInput = document.querySelector('#panel-url input[name="url"]');
@@ -854,6 +840,31 @@ function removeVideoFile(input, index) {
     previewVideoUploads(input);
 }
 
+var PRESETS = {
+    product:  ['ken_burns', 'vignette'],
+    tiktok:   ['bounce_zoom', 'flash'],
+    luxury:   ['parallax', 'soft_glow'],
+    vintage:  ['ken_burns', 'sepia'],
+    warm:     ['ken_burns', 'color_tint'],
+    focus:    ['zoom_center', 'none'],
+    unboxing: ['none', 'pixelate_reveal'],
+    genz:     ['shake', 'glitch'],
+};
+function applyPreset(val) {
+    var custom = document.getElementById('custom-effects');
+    var ef = document.getElementById('img-effect');
+    var st = document.getElementById('img-style');
+    if (val === 'custom') {
+        custom.style.display = 'flex';
+        return;
+    }
+    custom.style.display = 'none';
+    var p = PRESETS[val] || ['ken_burns', 'none'];
+    ef.value = p[0];
+    st.value = p[1];
+}
+applyPreset('product');
+
 function getVideoFormData() {
     const platform = document.getElementById('video-platform').value;
     const selected = Array.from(document.querySelectorAll('.vid-img-check:checked')).map(c => c.value);
@@ -864,21 +875,19 @@ function getVideoFormData() {
     fd.append('pdf_path', window._lastPdfPath || '');
     fd.append('platform', platform);
     fd.append('selected_images', JSON.stringify(selected));
-    fd.append('max_duration', document.getElementById('video-duration')?.value || '30');
     fd.append('music_volume', document.getElementById('music-volume')?.value || '15');
     fd.append('aspect_ratio', document.getElementById('video-aspect')?.value || '9:16');
-    fd.append('voice_speed', document.getElementById('voice-speed')?.value || '75');
-    fd.append('img_transition', document.getElementById('img-transition')?.value || '3');
     fd.append('subtitle_style', document.getElementById('subtitle-style')?.value || 'tiktok');
     fd.append('highlight_color', document.getElementById('highlight-color')?.value || '#FFD700');
     fd.append('img_effect', document.getElementById('img-effect')?.value || 'ken_burns');
+    fd.append('img_style', document.getElementById('img-style')?.value || 'none');
     fd.append('zoom_ratio', document.getElementById('zoom-ratio')?.value || '15');
     fd.append('show_intro', document.getElementById('show-intro')?.checked ? '1' : '0');
     fd.append('show_outro', document.getElementById('show-outro')?.checked ? '1' : '0');
-    const introBg = document.getElementById('intro-bg')?.files?.[0];
-    if (introBg) fd.append('intro_bg', introBg);
-    const outroBg = document.getElementById('outro-bg')?.files?.[0];
-    if (outroBg) fd.append('outro_bg', outroBg);
+    const introBg = document.getElementById('intro-bg-select')?.value || '';
+    if (introBg) fd.append('intro_bg_url', introBg);
+    const outroBg = document.getElementById('outro-bg-select')?.value || '';
+    if (outroBg) fd.append('outro_bg_url', outroBg);
     const logoFile = document.getElementById('video-logo')?.files?.[0];
     if (logoFile) fd.append('logo', logoFile);
     fd.append('logo_position', document.getElementById('logo-position')?.value || 'top-right');
@@ -958,6 +967,7 @@ function getVideoConfig() {
         subtitle_style: document.getElementById('subtitle-style')?.value,
         highlight_color: document.getElementById('highlight-color')?.value,
         img_effect: document.getElementById('img-effect')?.value,
+        img_style: document.getElementById('img-style')?.value,
         show_intro: document.getElementById('show-intro')?.checked,
         show_outro: document.getElementById('show-outro')?.checked,
         logo_position: document.getElementById('logo-position')?.value,
@@ -1140,6 +1150,230 @@ async function batchGenerate() {
     }
     vr.innerHTML = html;
     btn.disabled = false; btn.textContent = '📦 Tạo tất cả';
+}
+
+// === Paste Shopee data from clipboard ===
+async function pasteShopeeData() {
+    var statusEl = document.getElementById('shopee-poll-status');
+    try {
+        var text = await navigator.clipboard.readText();
+        if (!text.startsWith('SHOPEE_DATA:')) {
+            statusEl.textContent = '❌ Chưa có dữ liệu Shopee. Bấm bookmarklet trên trang Shopee trước!';
+            setTimeout(function() { statusEl.textContent = ''; }, 4000);
+            return;
+        }
+        var data = JSON.parse(text.substring(12));
+        statusEl.textContent = '⏳ Đang tải ảnh từ Shopee...';
+        var resp = await fetch('/receive-shopee-data', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+        var result = await resp.json();
+        applyShopeeData(result);
+    } catch(e) {
+        statusEl.textContent = '❌ ' + e.message;
+        setTimeout(function() { statusEl.textContent = ''; }, 4000);
+    }
+}
+
+function applyShopeeData(data) {
+    var statusEl = document.getElementById('shopee-poll-status');
+    switchTab('url');
+    var urlInput = document.querySelector('#panel-url input[name="url"]');
+    if (urlInput && data.url) urlInput.value = data.url;
+    var imgs = data.product_images || [];
+    statusEl.textContent = '✅ Đã nhận ' + imgs.length + ' ảnh từ Shopee!';
+    setTimeout(function() { statusEl.textContent = ''; }, 5000);
+    window._shopeeBookmarkletData = data;
+    var preview = document.getElementById('bookmarklet-preview');
+    if (!preview) {
+        preview = document.createElement('div');
+        preview.id = 'bookmarklet-preview';
+        var form = document.getElementById('form-url');
+        form.parentNode.insertBefore(preview, form);
+    }
+    var html = '<div class="result-card" style="margin-bottom:12px"><h3>📦 Ảnh từ Shopee (' + imgs.length + ')</h3>';
+    html += '<p style="font-size:.85em;color:#666;margin-bottom:8px">📖 ' + (data.title||'') + (data.price ? ' — ' + data.price : '') + '</p>';
+    html += '<div style="display:flex;flex-wrap:wrap;gap:8px">';
+    imgs.forEach(function(url, i) {
+        var isVid = url.match(/\.(mp4|mov|webm)/i);
+        html += '<div style="position:relative"><input type="checkbox" class="bm-img-check" data-url="' + url + '" checked style="position:absolute;top:4px;left:4px;width:18px;height:18px;z-index:2">';
+        html += isVid
+            ? '<video src="' + url + '" style="height:120px;border-radius:6px" controls></video>'
+            : '<img src="' + url + '" style="height:120px;border-radius:6px">';
+        html += '</div>';
+    });
+    html += '</div><p style="font-size:.8em;color:#999;margin-top:8px">💡 Bỏ chọn ảnh không cần, rồi bấm "🚀 Tạo Review" bên dưới</p></div>';
+    preview.innerHTML = html;
+}
+
+// === AI Image Regeneration ===
+async function regenAiImage(btn, oldUrl) {
+    var label = btn.parentElement;
+    btn.textContent = '⏳';
+    btn.disabled = true;
+    try {
+        var productImg = (window._productImages || [])[0] || '';
+        var fd = new FormData();
+        fd.append('scene', 'Create a different lifestyle photo of this product being used. Vietnamese setting, warm lighting, no face shown, crop above chin. Different angle and background from before.');
+        fd.append('product_image', productImg);
+        var resp = await fetch('/regenerate-image', {method: 'POST', body: fd});
+        if (!resp.ok) throw new Error('Failed');
+        var data = await resp.json();
+        var newUrl = data.image_url;
+        // Update the image and checkbox
+        var img = label.querySelector('img');
+        if (img) img.src = newUrl;
+        var cb = label.querySelector('input[type=checkbox]');
+        if (cb) cb.value = newUrl;
+        btn.textContent = '🔄';
+    } catch(e) {
+        btn.textContent = '❌';
+        setTimeout(function(){ btn.textContent = '🔄'; }, 2000);
+    }
+    btn.disabled = false;
+}
+
+// === Batch Generation ===
+function batchLog(msg) {
+    var el = document.getElementById('batch-log');
+    if (el) { el.textContent += new Date().toLocaleTimeString() + ' | ' + msg + '\n'; el.scrollTop = el.scrollHeight; }
+}
+
+// Load ElevenLabs voices into batch dropdown
+fetch('/api/elevenlabs-voices').then(r=>r.json()).then(d=>{
+    var sel = document.getElementById('batch-voice');
+    if (!sel) return;
+    (d.voices||[]).forEach(v=>{
+        var opt = document.createElement('option');
+        opt.value = 'elevenlabs:' + v.id;
+        opt.textContent = '🎤 ' + v.name;
+        sel.appendChild(opt);
+    });
+}).catch(()=>{});
+
+async function pasteBatchFromShopee() {
+    try {
+        var text = await navigator.clipboard.readText();
+        if (text.startsWith('SHOPEE_BATCH:')) {
+            var products = JSON.parse(text.substring(13));
+            var urls = products.map(p => p.url).join('\n');
+            document.getElementById('batch-urls').value = urls;
+        } else if (text.startsWith('SHOPEE_DATA:')) {
+            var data = JSON.parse(text.substring(12));
+            document.getElementById('batch-urls').value = data.url || '';
+        } else {
+            document.getElementById('batch-urls').value = text;
+        }
+    } catch(e) { alert('❌ ' + e.message); }
+}
+
+async function startBatchReview() {
+    var textarea = document.getElementById('batch-urls');
+    var urls = textarea.value.trim().split('\n').map(u => u.trim()).filter(u => u.startsWith('http'));
+    if (urls.length === 0) { alert('Nhập ít nhất 1 link Shopee!'); return; }
+    var audience = document.getElementById('batch-audience').value;
+    var customAudience = '';
+    if (audience === 'custom') {
+        customAudience = JSON.stringify({
+            name: document.getElementById('batch-cp-name').value || 'Khách hàng',
+            tone: document.getElementById('batch-cp-tone').value || 'thân thiện',
+            focus: document.getElementById('batch-cp-focus').value || 'chất lượng sản phẩm',
+        });
+    }
+    var btn = document.getElementById('btn-batch-review');
+    var progress = document.getElementById('batch-progress');
+    var results = document.getElementById('batch-results');
+    var batchVoice = document.getElementById('batch-voice')?.value || 'gtts';
+    var voiceType = batchVoice.startsWith('elevenlabs:') ? 'elevenlabs' : 'gtts';
+    var voiceId = batchVoice.startsWith('elevenlabs:') ? batchVoice.split(':')[1] : '';
+    var wordCount = document.getElementById('batch-word-count')?.value || '150';
+    batchLog('Voice: ' + batchVoice + ', Word count: ' + wordCount);
+    btn.disabled = true;
+    results.innerHTML = '';
+
+    // Use auto-persona mode (LLM suggests 3 personas per product)
+    if (audience === 'auto') {
+        batchLog('Mode: Auto-persona (' + urls.length + ' URLs × 3 personas)');
+        progress.innerHTML = '<div style="font-size:.9em">⏳ Đang phân tích ' + urls.length + ' sản phẩm × 3 personas...</div>';
+        try {
+            var fd = new FormData();
+            fd.append('urls', urls.join('\n'));
+            fd.append('voice_type', voiceType);
+            fd.append('voice_id', voiceId);
+            fd.append('word_count', wordCount);
+            batchLog('Calling /batch-personas...');
+            var resp = await fetch('/batch-personas', { method: 'POST', body: fd });
+            if (!resp.ok) throw new Error('Lỗi server: ' + resp.status);
+            var data = await resp.json();
+            batchLog('Response: ' + (data.results||[]).length + ' products');
+            var html = '';
+            (data.results || []).forEach(function(product, pi) {
+                html += '<div class="result-card" style="margin-bottom:12px;padding:16px">';
+                if (product.error) {
+                    batchLog('❌ Product ' + (pi+1) + ': ' + product.error);
+                    html += '<strong>❌ ' + product.title.substring(0,50) + '</strong> — ' + product.error;
+                } else {
+                    batchLog('✅ Product ' + (pi+1) + ': ' + product.title.substring(0,40) + ' → ' + product.personas.length + ' personas, ' + product.reviews.length + ' reviews');
+                    html += '<h3 style="margin-bottom:8px">📦 ' + product.title.substring(0,60) + '</h3>';
+                    (product.reviews || []).forEach(function(rev, ri) {
+                        var persona = rev.persona || {};
+                        var tkPost = rev.data?.tiktok?.social_post || '';
+                        var tkAudio = rev.data?.tiktok?.audio_url || '';
+                        batchLog('  Persona ' + (ri+1) + ': ' + (persona.name||'?') + ' → ' + (rev.error || (tkPost.length + ' chars')));
+                        html += '<div style="padding:8px;margin:4px 0;background:#f8f9fa;border-radius:6px">';
+                        html += '<strong>🎯 ' + (persona.name || 'Persona ' + (ri+1)) + '</strong>';
+                        html += ' <span style="font-size:.8em;color:#666">(' + (persona.focus || '') + ')</span>';
+                        if (tkAudio) html += ' <audio controls style="height:24px;vertical-align:middle"><source src="' + tkAudio + '"></audio>';
+                        html += ' <button class="copy-btn" onclick="navigator.clipboard.writeText(this.dataset.t)" data-t="' + tkPost.replace(/"/g,'&quot;') + '">📋 Copy</button>';
+                        html += '</div>';
+                    });
+                }
+                html += '</div>';
+            });
+            results.innerHTML = html;
+            progress.innerHTML = '<div style="font-size:.9em;color:green">✅ Hoàn thành ' + urls.length + ' sản phẩm × 3 personas!</div>';
+        } catch(e) {
+            progress.innerHTML = '<div style="color:red">❌ ' + e.message + '</div>';
+        }
+        btn.disabled = false;
+        return;
+    }
+
+    // Fixed persona mode (sequential, one review per product)
+    batchLog('Mode: Fixed persona (' + urls.length + ' URLs, audience=' + audience + ')');
+    var html = '';
+    for (var i = 0; i < urls.length; i++) {
+        progress.innerHTML = '<div style="font-size:.9em">⏳ Đang xử lý ' + (i+1) + '/' + urls.length + '...</div>' +
+            '<div style="background:#eee;border-radius:4px;height:8px;margin-top:6px"><div style="background:#e94560;height:8px;border-radius:4px;width:' + ((i+1)/urls.length*100) + '%"></div></div>';
+        try {
+            var fd = new FormData();
+            fd.append('url', urls[i]);
+            fd.append('audience', audience);
+            if (customAudience) fd.append('custom_audience', customAudience);
+            fd.append('word_count_tk', wordCount);
+            fd.append('voice_type', voiceType);
+            if (voiceId) fd.append('elevenlabs_voice_id', voiceId);
+            var resp = await fetch('/from-url', { method: 'POST', body: fd });
+            if (!resp.ok) throw new Error('Lỗi server');
+            var data = await resp.json();
+            var title = data.book?.title || 'Sản phẩm';
+            var tkPost = data.tiktok?.social_post || '';
+            var tkAudio = data.tiktok?.audio_url || '';
+            html += '<div class="result-card" style="padding:12px;margin-bottom:8px">' +
+                '<strong>✅ ' + (i+1) + '. ' + title.substring(0,60) + '</strong>' +
+                (tkAudio ? ' <audio controls style="height:28px;vertical-align:middle"><source src="' + tkAudio + '"></audio>' : '') +
+                '<button class="copy-btn" onclick="navigator.clipboard.writeText(this.dataset.t)" data-t="' + tkPost.replace(/"/g,'&quot;') + '">📋 Copy TikTok</button>' +
+                '</div>';
+        } catch(e) {
+            html += '<div class="result-card" style="padding:12px;margin-bottom:8px;border-left:3px solid red">' +
+                '<strong>❌ ' + (i+1) + '. ' + urls[i].substring(0,50) + '</strong> — ' + e.message + '</div>';
+        }
+        results.innerHTML = html;
+    }
+    progress.innerHTML = '<div style="font-size:.9em;color:green">✅ Hoàn thành ' + urls.length + ' sản phẩm!</div>';
+    btn.disabled = false;
 }
 </script>
 </body>

@@ -71,25 +71,6 @@ async def extract_from_shopee(url: str) -> BookInfo:
     )
 
 
-def _filter_bot_reviews(reviews: list[dict]) -> list[dict]:
-    real = []
-    for r in reviews:
-        text = r.get("text", "")
-        if len(text) < 10:
-            continue
-        if len(set(text.replace(" ", ""))) < 5:
-            continue
-        bot_patterns = [
-            r'^(good|ok|nice|tốt|hay|đẹp|ổn|👍|⭐|\.+|!+)\s*$',
-            r'^.{1,5}$',
-            r'^(.)\1{4,}',
-            r'^(shop giao hàng nhanh|giao hàng nhanh|đóng gói cẩn thận|hàng đẹp|chất lượng tốt)\s*\.?\s*$',
-        ]
-        if not any(re.match(p, text.strip(), re.IGNORECASE) for p in bot_patterns):
-            real.append(r)
-    return real
-
-
 def _title_from_url(url: str) -> str:
     from urllib.parse import unquote
     path = unquote(url.split("shopee.vn/")[-1] if "shopee.vn/" in url else "")
@@ -110,18 +91,36 @@ def _guess_author(title: str, desc: str) -> str:
     return "Không rõ tác giả"
 
 
-async def download_images(image_urls: list[str], output_dir: str) -> list[str]:
+async def download_images(image_urls: list[str], output_dir: str, include_video: bool = False) -> list[str]:
     paths = []
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
         for i, url in enumerate(image_urls[:15]):
             try:
+                is_video = ".mp4" in url or "video" in url
+                if is_video and not include_video:
+                    continue
                 resp = await client.get(url)
-                if resp.status_code == 200:
-                    is_video = ".mp4" in url or "video" in url
+                if resp.status_code == 200 and len(resp.content) > 1000:
                     ext = "mp4" if is_video else "jpg"
                     path = str(Path(output_dir) / f"product_{i}.{ext}")
                     Path(path).write_bytes(resp.content)
+                    # Validate image is not blank
+                    if not is_video:
+                        try:
+                            from PIL import Image
+                            img = Image.open(path)
+                            # Skip if too small or mostly single color
+                            if img.size[0] < 50 or img.size[1] < 50:
+                                Path(path).unlink(missing_ok=True)
+                                continue
+                            colors = img.convert("RGB").getcolors(maxcolors=100)
+                            if colors and len(colors) == 1:
+                                Path(path).unlink(missing_ok=True)
+                                continue
+                        except Exception:
+                            Path(path).unlink(missing_ok=True)
+                            continue
                     paths.append(path)
             except Exception:
                 continue
