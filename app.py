@@ -476,6 +476,35 @@ async def disconnect(platform: str):
     return {"status": "ok"}
 
 
+@app.get("/api/settings")
+async def get_settings():
+    """Return which credentials are configured (not the values)."""
+    keys = ["TIKTOK_CLIENT_KEY", "TIKTOK_CLIENT_SECRET",
+            "YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET",
+            "FACEBOOK_APP_ID", "FACEBOOK_APP_SECRET",
+            "ELEVENLABS_API_KEY", "AFFIPAD_API_KEY", "GEMINI_API_KEY"]
+    return {k: bool(os.getenv(k, "")) for k in keys}
+
+
+@app.post("/api/settings")
+async def save_settings(request: Request):
+    """Save credentials to .env file."""
+    data = await request.json()
+    env_path = Path(".env")
+    existing = {}
+    if env_path.exists():
+        for line in env_path.read_text().splitlines():
+            if "=" in line and not line.startswith("#"):
+                k, v = line.split("=", 1)
+                existing[k.strip()] = v.strip()
+    # Update with new values (only non-empty)
+    for k, v in data.items():
+        if v and v.strip():
+            existing[k] = v.strip()
+    env_path.write_text("\n".join(f"{k}={v}" for k, v in existing.items()) + "\n")
+    return {"status": "ok", "message": "✅ Đã lưu. Khởi động lại server để áp dụng."}
+
+
 # === Template System ===
 TEMPLATE_DIR = Path("templates_video")
 TEMPLATE_DIR.mkdir(exist_ok=True)

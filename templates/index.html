@@ -66,7 +66,17 @@
         <span id="plat-tiktok">⏳ TikTok</span>
         <span id="plat-youtube">⏳ YouTube</span>
         <span id="plat-facebook">⏳ Facebook</span>
+        <button onclick="openSettings()" style="margin-left:auto;background:none;border:1px solid #ddd;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:.85em">⚙️ API Keys</button>
     </div>
+    <dialog id="settings-dialog" style="border-radius:12px;border:1px solid #ddd;padding:24px;max-width:500px;width:90%">
+        <h3 style="margin:0 0 16px">⚙️ Cài đặt API Keys</h3>
+        <div id="settings-fields"></div>
+        <div style="display:flex;gap:8px;margin-top:16px">
+            <button onclick="saveSettings()" class="btn" style="font-size:.9em;padding:8px 20px">💾 Lưu</button>
+            <button onclick="document.getElementById('settings-dialog').close()" style="padding:8px 20px;border:1px solid #ddd;border-radius:8px;background:#fff;cursor:pointer">Đóng</button>
+        </div>
+        <p id="settings-msg" style="font-size:.85em;color:#666;margin-top:8px"></p>
+    </dialog>
     <script>
     function loadPlatforms() {
         fetch('/api/platforms').then(r=>r.json()).then(d=>{
@@ -88,6 +98,36 @@
         fetch('/disconnect/'+p,{method:'POST'}).then(()=>loadPlatforms());
     }
     loadPlatforms();
+
+    function openSettings() {
+        fetch('/api/settings').then(r=>r.json()).then(d=>{
+            var labels = {
+                GEMINI_API_KEY:'Gemini API Key', ELEVENLABS_API_KEY:'ElevenLabs API Key',
+                AFFIPAD_API_KEY:'AffiPad API Key',
+                TIKTOK_CLIENT_KEY:'TikTok Client Key', TIKTOK_CLIENT_SECRET:'TikTok Client Secret',
+                YOUTUBE_CLIENT_ID:'YouTube Client ID', YOUTUBE_CLIENT_SECRET:'YouTube Client Secret',
+                FACEBOOK_APP_ID:'Facebook App ID', FACEBOOK_APP_SECRET:'Facebook App Secret',
+            };
+            var html='';
+            for(var k in d){
+                var status=d[k]?'✅':'❌';
+                html+='<label style="display:block;margin-bottom:8px;font-size:.9em">'+status+' '+(labels[k]||k)+
+                    '<input type="password" id="set-'+k+'" placeholder="'+(d[k]?'(đã cấu hình)':'Chưa có')+
+                    '" style="width:100%;padding:6px 10px;border:1px solid #ddd;border-radius:6px;margin-top:2px"></label>';
+            }
+            document.getElementById('settings-fields').innerHTML=html;
+            document.getElementById('settings-dialog').showModal();
+        });
+    }
+    function saveSettings() {
+        var data={};
+        document.querySelectorAll('[id^="set-"]').forEach(el=>{
+            if(el.value.trim()) data[el.id.replace('set-','')]=el.value.trim();
+        });
+        if(Object.keys(data).length===0){document.getElementById('settings-msg').textContent='Không có gì để lưu';return;}
+        fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)})
+        .then(r=>r.json()).then(d=>{document.getElementById('settings-msg').textContent=d.message||'Đã lưu';});
+    }
     fetch('/api/kol-status').then(r=>r.json()).then(d=>{
         document.getElementById('kol-status').textContent = d.has_kol ? 'KOL ✅' : 'KOL (chưa có)';
     }).catch(()=>{});
