@@ -74,50 +74,79 @@ async def convert_to_affiliate_link(product_url: str) -> str:
 
 
 async def process_product(inp: PipelineInput) -> PipelineResult:
-    """Full pipeline for one product: extract → review → audio → images → save."""
+    """Full pipeline — each step independent, partial results saved on failure."""
     ts = make_ts()
+    result = {"book": {}, "audience": inp.audience}
+    images = []
+
+    # Step 1: Extract product info
     try:
         book = await extract_from_shopee(inp.url)
+        result["book"] = {
+            "title": book.title, "author": book.author, "price": book.price,
+            "shopee_url": book.shopee_url, "source": book.source,
+        }
+    except Exception as e:
+        print(f"[pipeline] Extract failed: {e}")
+        return PipelineResult(ts=ts, review_data=result, error=f"Extract failed: {e}")
+
+    # Step 2: Affiliate link (non-blocking)
+    try:
         if inp.affiliate_url:
             book.shopee_url = inp.affiliate_url
         else:
-            print(f"[affiliate] Converting: {inp.url[:60]}...")
             aff_link = await convert_to_affiliate_link(inp.url)
-            print(f"[affiliate] Result: {aff_link[:80] if aff_link else 'EMPTY'}")
             if aff_link:
                 book.shopee_url = aff_link
+                result["book"]["shopee_url"] = aff_link
+    except Exception as e:
+        print(f"[pipeline] Affiliate failed (continuing): {e}")
 
-        result = generate_review_all_platforms(
-            book, inp.audience, inp.custom_audience,
-            min(inp.word_count_fb, 300), min(inp.word_count_tk, 150),
-        )
-        print(f"[pipeline] Review generated")
+    # Step 3: Generate reviews — each platform independent
+    for platform, wc in [("facebook", min(inp.word_count_fb, 300)), ("tiktok", min(inp.word_count_tk, 150))]:
+        try:
+            from reviewer import generate_review
+            review = generate_review(book, inp.audience, platform, inp.custom_audience, wc)
+            result[platform] = review
+            print(f"[pipeline] {platform} review generated")
+        except Exception as e:
+            result[platform] = {"social_post": "", "review": f"Error: {e}", "hashtags": [], "hook": "", "key_points": [], "cta": ""}
+            print(f"[pipeline] {platform} review failed (continuing): {e}")
 
+    # Step 4: Audio — each platform independent
+    try:
         result = await _add_audio(result, ts, inp.voice_type, inp.elevenlabs_voice_id)
         print(f"[pipeline] Audio generated")
+    except Exception as e:
+        print(f"[pipeline] Audio failed (continuing): {e}")
 
+    # Step 5: Resolve images (non-blocking)
+    try:
         images = await _resolve_images(inp.image_urls, book, ts)
         print(f"[pipeline] Images resolved: {len(images)}")
+    except Exception as e:
+        print(f"[pipeline] Image resolve failed (continuing): {e}")
 
-        # Generate up to 3 AI lifestyle images if needed
+    # Step 6: AI images (non-blocking, separate from review)
+    try:
         if len(images) < 9:
-            print(f"[pipeline] Generating AI images (up to 3)...")
             from imagegen import generate_lifestyle_images, MAX_AI_IMAGES
             persona = inp.custom_audience or {"name": "Khách hàng phổ thông", "focus": "chất lượng sản phẩm"}
             num_ai = min(MAX_AI_IMAGES, 9 - len(images))
-            ai_images = await generate_lifestyle_images(book.title, persona, num_ai, ts, images[:3])
+            ai_images = await generate_lifestyle_images(book.title, persona, num_ai, ts, images[:3] if images else [])
             images.extend(ai_images)
             print(f"[pipeline] AI images: {len(ai_images)} generated")
-
-        result["product_images"] = images
-        result["affiliate_link"] = book.shopee_url or ""
-
-        out = output_path(ts, "review.json")
-        out.write_text(json.dumps(result, ensure_ascii=False, indent=2))
-
-        return PipelineResult(ts=ts, review_data=result, product_images=images, review_json_path=str(out))
     except Exception as e:
-        return PipelineResult(ts=ts, review_data={}, error=str(e))
+        print(f"[pipeline] AI image gen failed (continuing): {e}")
+
+    result["product_images"] = images
+    result["affiliate_link"] = book.shopee_url or ""
+
+    # Save whatever we have
+    out = output_path(ts, "review.json")
+    out.write_text(json.dumps(result, ensure_ascii=False, indent=2))
+
+    return PipelineResult(ts=ts, review_data=result, product_images=images, review_json_path=str(out))
 
 
 async def process_batch(inputs: list[PipelineInput]) -> list[PipelineResult]:

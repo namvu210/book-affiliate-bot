@@ -80,22 +80,30 @@
     <script>
     function loadPlatforms() {
         fetch('/api/platforms').then(r=>r.json()).then(d=>{
-            ['tiktok','youtube','facebook'].forEach(p=>{
+            ['tiktok','youtube','facebook'].forEach(function(p){
                 var el=document.getElementById('plat-'+p);
                 if(!el)return;
                 var info=d[p]||{};
+                var label=p.charAt(0).toUpperCase()+p.slice(1);
                 if(info.connected){
-                    el.innerHTML='✅ '+p.charAt(0).toUpperCase()+p.slice(1)+(info.name?' ('+info.name+')':'')+
-                        ' <a href="#" onclick="disconnectPlatform(\''+p+'\');return false" style="font-size:.8em;color:#999">ngắt</a>';
+                    el.textContent='✅ '+label+(info.name?' ('+info.name+')':'');
+                    var a=document.createElement('a');
+                    a.href='#';a.textContent=' ngắt';a.style.cssText='font-size:.8em;color:#999';
+                    a.onclick=function(e){e.preventDefault();disconnectPlatform(p);};
+                    el.appendChild(a);
                 }else{
-                    el.innerHTML='❌ '+p.charAt(0).toUpperCase()+p.slice(1)+
-                        ' <a href="/connect/'+p+'" target="_blank" style="font-size:.8em;color:#e94560" onclick="setTimeout(loadPlatforms,5000)">kết nối</a>';
+                    el.textContent='❌ '+label+' ';
+                    var a=document.createElement('a');
+                    a.href='/connect/'+p;a.target='_blank';a.textContent='kết nối';
+                    a.style.cssText='font-size:.8em;color:#e94560';
+                    a.onclick=function(){setTimeout(loadPlatforms,5000);};
+                    el.appendChild(a);
                 }
             });
-        }).catch(()=>{});
+        }).catch(function(){});
     }
     function disconnectPlatform(p){
-        fetch('/disconnect/'+p,{method:'POST'}).then(()=>loadPlatforms());
+        fetch('/disconnect/'+p,{method:'POST'}).then(function(){loadPlatforms();});
     }
     loadPlatforms();
 
@@ -580,7 +588,7 @@ function renderResult(data) {
                                    onchange="limitVideoImages(this)">
                             ${isAI ? '<span style="position:absolute;top:4px;right:28px;background:#7c3aed;color:#fff;font-size:10px;padding:1px 5px;border-radius:4px;z-index:3">🤖 AI</span>' : ''}
                             <img src="${img}" style="height:100px;border-radius:6px;border:2px solid ${isAI ? '#7c3aed' : '#e94560'}">
-                            ${isAI ? '<button type="button" onclick="regenAiImage(this,\\''+img+'\\')" style="position:absolute;bottom:4px;right:4px;background:#7c3aed;color:#fff;border:none;border-radius:4px;padding:2px 6px;cursor:pointer;font-size:11px;z-index:3">🔄</button>' : ''}
+                            ${isAI ? `<button type="button" data-img="${img}" onclick="regenAiImage(this,this.dataset.img)" style="position:absolute;bottom:4px;right:4px;background:#7c3aed;color:#fff;border:none;border-radius:4px;padding:2px 6px;cursor:pointer;font-size:11px;z-index:3">🔄</button>` : ''}
                             <button type="button" onclick="removeVidImg(this.parentElement)" style="position:absolute;top:-6px;right:-6px;background:#e94560;color:#fff;border:none;border-radius:50%;width:20px;height:20px;cursor:pointer;font-size:12px;line-height:20px;padding:0;z-index:3">✕</button>
                         </label>`;
                     }).join('')}
@@ -1222,14 +1230,39 @@ async function batchGenerate() {
 
 // === Paste Shopee data from clipboard ===
 async function pasteShopeeData() {
+    // Show paste box
+    var existing = document.getElementById('paste-fallback');
+    if (existing) existing.remove();
+    var div = document.createElement('div');
+    div.id = 'paste-fallback';
+    div.innerHTML = '<div style="margin:8px 0;padding:12px;background:#fff3cd;border-radius:8px">' +
+        '<p style="font-size:.85em;margin:0 0 6px">📋 Dán dữ liệu Shopee vào đây (Ctrl+V):</p>' +
+        '<textarea id="paste-box" rows="2" style="width:100%;font-size:.8em;font-family:monospace;padding:6px;border:1px solid #ddd;border-radius:4px" placeholder="SHOPEE_DATA:{...}"></textarea>' +
+        '<button onclick="manualPaste()" class="btn" style="padding:4px 12px;font-size:.85em;margin-top:4px">OK</button>' +
+        ' <button onclick="document.getElementById(\'paste-fallback\').remove()" style="padding:4px 12px;font-size:.85em;margin-top:4px;background:#eee;border:1px solid #ddd;border-radius:8px;cursor:pointer">Hủy</button></div>';
     var statusEl = document.getElementById('shopee-poll-status');
+    statusEl.parentElement.parentNode.insertBefore(div, statusEl.parentElement.nextSibling);
+    var box = document.getElementById('paste-box');
+    box.focus();
+    // Try auto-fill from clipboard
     try {
         var text = await navigator.clipboard.readText();
-        if (!text.startsWith('SHOPEE_DATA:')) {
-            statusEl.textContent = '❌ Chưa có dữ liệu Shopee. Bấm bookmarklet trên trang Shopee trước!';
-            setTimeout(function() { statusEl.textContent = ''; }, 4000);
-            return;
-        }
+        if (text.startsWith('SHOPEE_DATA:')) { box.value = text; }
+    } catch(e) {}
+}
+function manualPaste() {
+    var text = document.getElementById('paste-box')?.value || '';
+    var el = document.getElementById('paste-fallback');
+    if (el) el.remove();
+    if (text.startsWith('SHOPEE_DATA:')) {
+        processShopeeText(text);
+    } else {
+        document.getElementById('shopee-poll-status').textContent = '❌ Dữ liệu không hợp lệ';
+    }
+}
+async function processShopeeText(text) {
+    var statusEl = document.getElementById('shopee-poll-status');
+    try {
         var data = JSON.parse(text.substring(12));
         statusEl.textContent = '⏳ Đang tải ảnh từ Shopee...';
         var resp = await fetch('/receive-shopee-data', {

@@ -48,9 +48,14 @@ def generate_scene_descriptions(product_title: str, persona: dict, num_scenes: i
         f"I will use AI image editing to composite the KOL photo + product photo into lifestyle scenes.\n"
         f"Generate {num_scenes} SHORT editing instructions. Each instruction tells the AI how to combine "
         f"the KOL and product into one scene.\n\n"
-        f"IMPORTANT: Determine who USES the product vs who BUYS it. "
-        f"If the buyer and end-user are different (e.g., parent buys for child), "
-        f"describe the appropriate person using the product.\n\n"
+        f"CRITICAL — WHO APPEARS IN THE PHOTO:\n"
+        f"The buyer ('{persona_name}') is NOT always the person who uses the product.\n"
+        f"Determine the actual END-USER based on the product:\n"
+        f"- Children's books/toys/clothes → show a CHILD using it, NOT the parent\n"
+        f"- Pet products → show the PET, NOT the owner\n"
+        f"- Gift items → show the RECIPIENT, NOT the buyer\n"
+        f"- Adult products → show the buyer using it\n"
+        f"For '{product_title}': who is the end-user? Show THAT person with the product.\n\n"
         f"Each instruction should specify:\n"
         f"- How the person interacts with the product (wearing, holding, using)\n"
         f"- Vietnamese setting (café, office, home, street)\n"
@@ -122,14 +127,14 @@ async def generate_lifestyle_images(
     product_img = None
     if product_images:
         local = str(Path(".") / product_images[0].lstrip("/"))
+        print(f"[imagegen] Product image: {local} exists={Path(local).exists()}")
         if Path(local).exists():
             try:
                 product_img = Image.open(local)
-            except Exception:
-                pass
-
+            except Exception as e:
+                print(f"[imagegen] Failed to open: {e}")
     if not product_img:
-        print("[imagegen] No product image available for editing")
+        print(f"[imagegen] No product image. URLs: {product_images[:2] if product_images else '[]'}")
         return []
 
     client = genai.Client(api_key=GEMINI_API_KEY)
@@ -168,5 +173,5 @@ async def generate_lifestyle_images(
                     print(f"[imagegen] Generated image {i+1}/{len(scenes)} ({len(part.inline_data.data)} bytes)")
                     break
         except Exception as e:
-            print(f"[imagegen] Image {i+1} failed: {e}")
+            print(f"[imagegen] Image {i+1} failed: {type(e).__name__}: {e}")
     return paths

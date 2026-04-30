@@ -374,6 +374,22 @@ async def upload_kol(file: UploadFile = File(...)):
     return {"status": "ok", "message": "✅ Đã lưu ảnh KOL!"}
 
 
+@app.post("/generate-ai-images")
+async def generate_ai_images_endpoint(
+    title: str = Form(...),
+    persona_name: str = Form("Khách hàng"),
+    persona_focus: str = Form("chất lượng sản phẩm"),
+    product_images: str = Form("[]"),
+):
+    """Generate AI lifestyle images independently — retryable without regenerating reviews."""
+    from imagegen import generate_lifestyle_images, MAX_AI_IMAGES
+    ts = make_ts()
+    imgs = json.loads(product_images)
+    persona = {"name": persona_name, "focus": persona_focus}
+    ai_images = await generate_lifestyle_images(title, persona, MAX_AI_IMAGES, ts, imgs[:3])
+    return {"ai_images": ai_images}
+
+
 @app.post("/regenerate-image")
 async def regenerate_image(
     scene: str = Form(...),

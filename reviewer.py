@@ -42,20 +42,19 @@ def generate_json(prompt: str, max_tokens: int = 2000, model: str = "") -> dict 
     text = resp.text.strip()
     if text.startswith("```"):
         text = text.split("\n", 1)[1].rsplit("```", 1)[0]
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        import re
-        fixed = text
-        fixed = re.sub(r',\s*([}\]])', r'\1', fixed)  # trailing commas
-        fixed = fixed.replace('\n', '\\n')  # unescaped newlines
+    # Try progressively more aggressive JSON repair
+    import re
+    for attempt, t in enumerate([
+        text,
+        re.sub(r',\s*([}\]])', r'\1', text).replace('\n', '\\n'),
+        re.sub(r',\s*([}\]])', r'\1', re.sub(r"(?<=[{,\[])\s*'([^']+)'\s*:", r' "\1":', re.sub(r":\s*'([^']*)'", r': "\1"', text))),
+    ]):
         try:
-            return json.loads(fixed)
+            return json.loads(t)
         except json.JSONDecodeError:
-            # Single quotes → double quotes (common LLM mistake)
-            fixed2 = re.sub(r"(?<=[{,\[])\s*'([^']+)'\s*:", r' "\1":', text)
-            fixed2 = re.sub(r":\s*'([^']*)'", r': "\1"', fixed2)
-            return json.loads(fixed2)
+            continue
+    # Last resort: extract the raw text as a single review
+    raise json.JSONDecodeError("All repair attempts failed", text[:100], 0)
 
 
 def build_review_prompt(
