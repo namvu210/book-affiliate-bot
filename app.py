@@ -429,6 +429,53 @@ async def kol_status():
     return {"has_kol": get_kol_photo() is not None}
 
 
+# === Platform OAuth ===
+
+@app.get("/api/platforms")
+async def platform_status():
+    """Check which social platforms are connected."""
+    from auth import get_platform_status
+    return get_platform_status()
+
+
+@app.get("/connect/{platform}")
+async def connect_platform(platform: str):
+    """Redirect to OAuth login for a platform."""
+    from auth import tiktok_auth_url, youtube_auth_url, facebook_auth_url
+    urls = {"tiktok": tiktok_auth_url, "youtube": youtube_auth_url, "facebook": facebook_auth_url}
+    fn = urls.get(platform)
+    if not fn:
+        raise HTTPException(400, f"Unknown platform: {platform}")
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(fn())
+
+
+@app.get("/callback/{platform}")
+async def oauth_callback(platform: str, code: str = ""):
+    """Handle OAuth callback from platforms."""
+    if not code:
+        return HTMLResponse("<html><body><h2>❌ Lỗi: không nhận được mã xác thực</h2></body></html>")
+    from auth import tiktok_exchange_code, youtube_exchange_code, facebook_exchange_code, save_platform_token
+    exchangers = {"tiktok": tiktok_exchange_code, "youtube": youtube_exchange_code, "facebook": facebook_exchange_code}
+    fn = exchangers.get(platform)
+    if not fn:
+        return HTMLResponse(f"<html><body><h2>❌ Unknown platform: {platform}</h2></body></html>")
+    token_data = await fn(code)
+    if token_data and token_data.get("access_token"):
+        save_platform_token(platform, token_data)
+        name = token_data.get("display_name", platform)
+        return HTMLResponse(f"<html><body><h2>✅ Đã kết nối {name}!</h2><p>Bạn có thể đóng tab này.</p><script>window.close()</script></body></html>")
+    return HTMLResponse("<html><body><h2>❌ Kết nối thất bại. Thử lại.</h2></body></html>")
+
+
+@app.post("/disconnect/{platform}")
+async def disconnect(platform: str):
+    """Disconnect a platform."""
+    from auth import disconnect_platform
+    disconnect_platform(platform)
+    return {"status": "ok"}
+
+
 # === Template System ===
 TEMPLATE_DIR = Path("templates_video")
 TEMPLATE_DIR.mkdir(exist_ok=True)

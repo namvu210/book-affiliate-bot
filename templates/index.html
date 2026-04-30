@@ -61,7 +61,33 @@
         </label>
         <span id="shopee-poll-status" style="font-size:.8em;color:#999"></span>
     </div>
+    <div id="platform-bar" style="background:#fff;padding:8px 20px;border-radius:8px;margin-bottom:12px;box-shadow:0 2px 8px rgba(0,0,0,.06);display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:.85em">
+        <span style="font-weight:600">📤 Nền tảng:</span>
+        <span id="plat-tiktok">⏳ TikTok</span>
+        <span id="plat-youtube">⏳ YouTube</span>
+        <span id="plat-facebook">⏳ Facebook</span>
+    </div>
     <script>
+    function loadPlatforms() {
+        fetch('/api/platforms').then(r=>r.json()).then(d=>{
+            ['tiktok','youtube','facebook'].forEach(p=>{
+                var el=document.getElementById('plat-'+p);
+                if(!el)return;
+                var info=d[p]||{};
+                if(info.connected){
+                    el.innerHTML='✅ '+p.charAt(0).toUpperCase()+p.slice(1)+(info.name?' ('+info.name+')':'')+
+                        ' <a href="#" onclick="disconnectPlatform(\''+p+'\');return false" style="font-size:.8em;color:#999">ngắt</a>';
+                }else{
+                    el.innerHTML='❌ '+p.charAt(0).toUpperCase()+p.slice(1)+
+                        ' <a href="/connect/'+p+'" target="_blank" style="font-size:.8em;color:#e94560" onclick="setTimeout(loadPlatforms,5000)">kết nối</a>';
+                }
+            });
+        }).catch(()=>{});
+    }
+    function disconnectPlatform(p){
+        fetch('/disconnect/'+p,{method:'POST'}).then(()=>loadPlatforms());
+    }
+    loadPlatforms();
     fetch('/api/kol-status').then(r=>r.json()).then(d=>{
         document.getElementById('kol-status').textContent = d.has_kol ? 'KOL ✅' : 'KOL (chưa có)';
     }).catch(()=>{});

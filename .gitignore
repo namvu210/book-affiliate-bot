@@ -8,3 +8,5 @@ server.log
 .env
 voices/
 templates_video/
+tokens.json
+kol/
