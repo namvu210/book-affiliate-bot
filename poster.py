@@ -70,6 +70,8 @@ async def _post_facebook_reel(req: PostRequest) -> PostResult:
     if req.affiliate_link:
         caption += f"\n\n🛒 Mua ngay: {req.affiliate_link}"
 
+    print(f"[facebook] Caption length: {len(caption)}, hashtags: {len(req.hashtags)}, affiliate: {'yes' if req.affiliate_link else 'no'}")
+
     try:
         async with httpx.AsyncClient(timeout=120) as client:
             # Step 1: Initialize upload
@@ -109,6 +111,7 @@ async def _post_facebook_reel(req: PostRequest) -> PostResult:
                     "video_id": video_id,
                     "title": req.title[:100] if req.title else "",
                     "description": caption,
+                    "video_state": "PUBLISHED",
                 },
             )
             pub_data = publish_resp.json()

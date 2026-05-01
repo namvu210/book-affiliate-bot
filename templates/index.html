@@ -1325,8 +1325,12 @@ async function publishVideo(videoUrl) {
         var resp = await fetch('/publish', {method: 'POST', body: fd});
         var data = await resp.json();
         var results = data.results || [];
-        var msg = results.map(r => (r.success ? '✅' : '❌') + ' ' + r.platform + ': ' + r.message).join(' | ');
-        status.textContent = msg;
+        var msg = results.map(function(r) {
+            var s = (r.success ? '✅' : '❌') + ' ' + r.platform + ': ' + r.message;
+            if (r.post_id) s += ' <a href="https://www.facebook.com/' + r.post_id + '" target="_blank" style="color:#1877f2">Xem bài đăng →</a>';
+            return s;
+        }).join(' | ');
+        status.innerHTML = msg;
     } catch(e) {
         status.textContent = '❌ ' + e.message;
     }
