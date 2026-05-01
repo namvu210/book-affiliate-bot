@@ -74,7 +74,7 @@ def generate_tiktok_video(
     size = ASPECT_MAP.get(aspect_ratio, (1080, 1920))
     W, H = size
     duration = get_audio_duration(audio_path) or 30.0
-    fps = 24 if _can_use_ffmpeg_pipeline(img_effect, img_style) else 10
+    fps = 24
 
     sentences = split_sentences(social_post or "")
     char_counts = [max(1, len(s)) for s in sentences]

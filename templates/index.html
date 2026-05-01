@@ -1015,7 +1015,7 @@ async function generateVideo() {
         let h = `<video controls style="width:100%;max-width:400px;border-radius:12px"><source src="${data.video_url}" type="video/mp4"></video>
             <br><a href="${data.video_url}" download class="btn" style="margin-top:8px;display:inline-block;font-size:.9em">⬇️ ${label}</a>`;
         if (data.srt_url) h += `<br><a href="${data.srt_url}" download style="font-size:.85em;color:#0f3460;margin-top:4px;display:inline-block">📝 Phụ đề SRT</a>`;
-        h += `<br><button class="btn" onclick="publishVideo('${data.video_url}')" style="margin-top:8px;font-size:.9em;background:#16213e">📤 Đăng bài (n8n)</button>`;
+        h += `<br><button class="btn" onclick="publishVideo('${data.video_url}')" style="margin-top:8px;font-size:.9em;background:#1877f2">📤 Đăng Facebook Reels</button>`;
         h += `<span id="publish-status" style="font-size:.85em;margin-left:8px"></span>`;
         vr.innerHTML = h;
     } catch(e) { vr.innerHTML = `<p style="color:red">❌ ${e.message}</p>`; }
@@ -1316,12 +1316,12 @@ function applyShopeeData(data) {
 async function publishVideo(videoUrl) {
     var status = document.getElementById('publish-status');
     if (!status) return;
-    status.textContent = '⏳ Đang gửi đến n8n...';
+    status.textContent = '⏳ Đang đăng Facebook Reels...';
     try {
         var fd = new FormData();
         fd.append('review_json', JSON.stringify(window._lastReviewData || {}));
         fd.append('video_url', videoUrl);
-        fd.append('platforms', 'tiktok,youtube');
+        fd.append('platforms', 'facebook');
         var resp = await fetch('/publish', {method: 'POST', body: fd});
         var data = await resp.json();
         var results = data.results || [];

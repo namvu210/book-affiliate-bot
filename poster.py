@@ -1,4 +1,4 @@
-"""Post content to social platforms via n8n webhook."""
+"""Post content to social platforms."""
 
 import json
 from dataclasses import dataclass, field
@@ -6,7 +6,8 @@ from pathlib import Path
 
 import httpx
 
-from config import N8N_WEBHOOK_URL, OUTPUT_DIR
+from auth import get_access_token
+from config import OUTPUT_DIR
 
 
 @dataclass
@@ -17,7 +18,7 @@ class PostRequest:
     title: str = ""
     affiliate_link: str = ""
     thumbnail_path: str = ""
-    platforms: list[str] = field(default_factory=lambda: ["tiktok", "youtube"])
+    platforms: list[str] = field(default_factory=lambda: ["facebook"])
 
 
 @dataclass
@@ -25,52 +26,110 @@ class PostResult:
     platform: str
     success: bool
     message: str = ""
-    post_url: str = ""
+    post_id: str = ""
 
 
 async def publish(req: PostRequest) -> list[PostResult]:
-    """Send content to n8n webhook for posting to social platforms."""
-    if not N8N_WEBHOOK_URL:
-        return [PostResult(platform="all", success=False, message="N8N_WEBHOOK_URL not configured in .env")]
+    """Publish to all requested platforms."""
+    results = []
+    for platform in req.platforms:
+        if platform == "facebook":
+            results.append(await _post_facebook_reel(req))
+        elif platform == "tiktok":
+            results.append(await _post_tiktok(req))
+        elif platform == "youtube":
+            results.append(await _post_youtube(req))
+        else:
+            results.append(PostResult(platform=platform, success=False, message=f"Unknown platform: {platform}"))
+    return results
 
-    # Build caption with hashtags and affiliate link
-    full_caption = req.caption
+
+async def _post_facebook_reel(req: PostRequest) -> PostResult:
+    """Post a Reel to Facebook Page via Graph API."""
+    from auth import get_access_token, _load_tokens
+    tokens = _load_tokens()
+    fb = tokens.get("facebook", {})
+    access_token = fb.get("access_token")
+    page_id = fb.get("page_id")
+
+    if not access_token or not page_id:
+        return PostResult(platform="facebook", success=False, message="Facebook chưa kết nối. Vào ⚙️ API Keys → kết nối Facebook.")
+
+    video_path = req.video_path
+    if not Path(video_path).exists():
+        # Try resolving from output URL
+        if "/output/" in video_path:
+            video_path = str(Path(OUTPUT_DIR) / video_path.split("/output/")[-1])
+    if not Path(video_path).exists():
+        return PostResult(platform="facebook", success=False, message=f"Video không tồn tại: {video_path}")
+
+    # Build caption
+    caption = req.caption
     if req.hashtags:
-        full_caption += "\n\n" + " ".join(f"#{h.lstrip('#')}" for h in req.hashtags)
+        caption += "\n\n" + " ".join(f"#{h.lstrip('#')}" for h in req.hashtags)
     if req.affiliate_link:
-        full_caption += f"\n\n🛒 Mua ngay: {req.affiliate_link}"
+        caption += f"\n\n🛒 Mua ngay: {req.affiliate_link}"
 
-    # Send video file + metadata to n8n
     try:
-        async with httpx.AsyncClient(timeout=60) as client:
-            files = {}
-            if req.video_path and Path(req.video_path).exists():
-                files["video"] = (Path(req.video_path).name, Path(req.video_path).read_bytes(), "video/mp4")
-            if req.thumbnail_path and Path(req.thumbnail_path).exists():
-                files["thumbnail"] = (Path(req.thumbnail_path).name, Path(req.thumbnail_path).read_bytes(), "image/jpeg")
+        async with httpx.AsyncClient(timeout=120) as client:
+            # Step 1: Initialize upload
+            init_resp = await client.post(
+                f"https://graph.facebook.com/v21.0/{page_id}/video_reels",
+                params={"access_token": access_token},
+                data={"upload_phase": "start"},
+            )
+            init_data = init_resp.json()
+            if "video_id" not in init_data:
+                return PostResult(platform="facebook", success=False, message=f"Init failed: {init_data.get('error', {}).get('message', str(init_data))}")
 
-            data = {
-                "caption": full_caption,
-                "title": req.title or req.caption[:100],
-                "hashtags": json.dumps(req.hashtags),
-                "affiliate_link": req.affiliate_link,
-                "platforms": json.dumps(req.platforms),
-            }
+            video_id = init_data["video_id"]
 
-            resp = await client.post(N8N_WEBHOOK_URL, data=data, files=files)
+            # Step 2: Upload video binary
+            file_size = Path(video_path).stat().st_size
+            with open(video_path, "rb") as f:
+                upload_resp = await client.post(
+                    f"https://rupload.facebook.com/video-upload/v21.0/{video_id}",
+                    headers={
+                        "Authorization": f"OAuth {access_token}",
+                        "offset": "0",
+                        "file_size": str(file_size),
+                    },
+                    content=f.read(),
+                )
+            upload_data = upload_resp.json()
+            if not upload_data.get("success"):
+                return PostResult(platform="facebook", success=False, message=f"Upload failed: {upload_data}")
 
-            if resp.status_code == 200:
-                result = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
-                return [PostResult(
-                    platform=p,
-                    success=True,
-                    message=result.get("message", "Sent to n8n"),
-                    post_url=result.get(f"{p}_url", ""),
-                ) for p in req.platforms]
+            # Step 3: Publish the reel
+            publish_resp = await client.post(
+                f"https://graph.facebook.com/v21.0/{page_id}/video_reels",
+                params={"access_token": access_token},
+                data={
+                    "upload_phase": "finish",
+                    "video_id": video_id,
+                    "title": req.title[:100] if req.title else "",
+                    "description": caption,
+                },
+            )
+            pub_data = publish_resp.json()
+            if pub_data.get("success") or pub_data.get("id"):
+                post_id = pub_data.get("id", video_id)
+                return PostResult(platform="facebook", success=True, message="✅ Đã đăng Reel!", post_id=str(post_id))
             else:
-                return [PostResult(platform="all", success=False, message=f"n8n returned {resp.status_code}: {resp.text[:200]}")]
+                return PostResult(platform="facebook", success=False, message=f"Publish failed: {pub_data.get('error', {}).get('message', str(pub_data))}")
+
     except Exception as e:
-        return [PostResult(platform="all", success=False, message=str(e))]
+        return PostResult(platform="facebook", success=False, message=str(e))
+
+
+async def _post_tiktok(req: PostRequest) -> PostResult:
+    """Post to TikTok (placeholder — requires developer app approval)."""
+    return PostResult(platform="tiktok", success=False, message="TikTok posting chưa sẵn sàng — cần đăng ký developer app")
+
+
+async def _post_youtube(req: PostRequest) -> PostResult:
+    """Post to YouTube (placeholder)."""
+    return PostResult(platform="youtube", success=False, message="YouTube posting chưa sẵn sàng")
 
 
 def build_post_request(review_data: dict, video_url: str, platform_key: str = "tiktok") -> PostRequest:
@@ -78,10 +137,10 @@ def build_post_request(review_data: dict, video_url: str, platform_key: str = "t
     book = review_data.get("book", {})
     platform_data = review_data.get(platform_key, {})
 
-    # Resolve video path from URL
-    video_path = str(Path(OUTPUT_DIR) / video_url.split("/output/")[-1]) if "/output/" in video_url else video_url
+    video_path = video_url
+    if "/output/" in video_url:
+        video_path = str(Path(OUTPUT_DIR) / video_url.split("/output/")[-1])
 
-    # Use first product image as thumbnail
     images = review_data.get("product_images", [])
     thumbnail = ""
     if images:
