@@ -58,15 +58,29 @@ def generate_scene_descriptions(product_title: str, persona: dict, num_scenes: i
         f"For '{product_title}': who is the end-user? Show THAT person with the product.\n\n"
         f"Each instruction should specify:\n"
         f"- How the person interacts with the product (wearing, holding, using)\n"
-        f"- Vietnamese setting (café, office, home, street)\n"
-        f"- Camera angle (close-up, waist-up, full body from neck down)\n"
-        f"- 'No face shown, crop above chin'\n"
+        f"- Vietnamese setting APPROPRIATE for the product:\n"
+        f"  * Underwear/lingerie/bras → bedroom, dressing room, flat lay on bed. NEVER in public.\n"
+        f"  * Swimwear → beach, pool area\n"
+        f"  * Sleepwear/pajamas → bedroom, living room at home\n"
+        f"  * Outerwear/fashion → café, street, office, park\n"
+        f"  * Kitchen items → kitchen\n"
+        f"  * Books/stationery → desk, café, library\n"
+        f"  * Choose the most NATURAL setting where this product would actually be used/worn\n"
+        f"- Camera angle (close-up, waist-up, full body)\n"
         f"- Lighting and mood\n\n"
         f"Keep each instruction under 100 words.\n"
         f"Return JSON array of strings only."
     )
 
     contents = []
+    kol_path = get_kol_photo()
+    if kol_path:
+        try:
+            contents.append(Image.open(kol_path))
+            contents.append("Above: KOL/reviewer reference photo. Describe this person's appearance "
+                          "(body shape, skin tone, hair style, approximate age) and reference it in your scene descriptions.")
+        except Exception:
+            pass
     if product_images:
         for img_path in product_images[:2]:
             local = str(Path(".") / img_path.lstrip("/"))
@@ -75,6 +89,9 @@ def generate_scene_descriptions(product_title: str, persona: dict, num_scenes: i
                     contents.append(Image.open(local))
                 except Exception:
                     pass
+        contents.append("Above: Real product photos. Use these ONLY for the product appearance "
+                      "(color, shape, material, brand). IGNORE any people/models shown in these photos — "
+                      "use the KOL reference photo for the person's appearance instead.")
     contents.append(prompt)
 
     try:
@@ -99,6 +116,27 @@ def generate_scene_descriptions(product_title: str, persona: dict, num_scenes: i
     return []
 
 
+def _detect_end_user(product_title: str, persona_name: str) -> dict:
+    """Determine if buyer = end_user. Returns {"same_person": bool, "end_user": str}."""
+    try:
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        resp = client.models.generate_content(
+            model=SCENE_MODEL,
+            contents=(
+                f"Product: {product_title}\nBuyer: {persona_name}\n\n"
+                f"Is the buyer the same person who USES this product?\n"
+                f"Examples: adult buys shirt for themselves → same. Parent buys toy for child → different.\n"
+                f"Return JSON: {{\"same_person\": true/false, \"end_user\": \"description of who uses it\"}}"
+            ),
+            config=types.GenerateContentConfig(max_output_tokens=100, response_mime_type="application/json"),
+        )
+        import json
+        return json.loads(resp.text.strip())
+    except Exception as e:
+        print(f"[imagegen] Role detection failed: {e}")
+        return {"same_person": True, "end_user": persona_name}
+
+
 async def generate_lifestyle_images(
     product_title: str,
     persona: dict,
@@ -111,6 +149,14 @@ async def generate_lifestyle_images(
     if num <= 0:
         return []
 
+    persona_name = persona.get("name", "Khách hàng") if isinstance(persona, dict) else str(persona)
+
+    # Detect roles: should we use KOL photo or describe end_user?
+    roles = _detect_end_user(product_title, persona_name)
+    use_kol = roles.get("same_person", True)
+    end_user_desc = roles.get("end_user", persona_name)
+    print(f"[imagegen] Roles: same_person={use_kol}, end_user={end_user_desc}")
+
     scenes = generate_scene_descriptions(product_title, persona, num, product_images)
     if not scenes:
         return []
@@ -118,23 +164,24 @@ async def generate_lifestyle_images(
     # Load reference images
     kol_path = get_kol_photo()
     kol_img = None
-    if kol_path:
+    if kol_path and use_kol:
         try:
             kol_img = Image.open(kol_path)
         except Exception:
             pass
 
-    product_img = None
+    product_imgs = []
     if product_images:
-        local = str(Path(".") / product_images[0].lstrip("/"))
-        print(f"[imagegen] Product image: {local} exists={Path(local).exists()}")
-        if Path(local).exists():
-            try:
-                product_img = Image.open(local)
-            except Exception as e:
-                print(f"[imagegen] Failed to open: {e}")
-    if not product_img:
-        print(f"[imagegen] No product image. URLs: {product_images[:2] if product_images else '[]'}")
+        for img_url in product_images[:4]:
+            local = str(Path(".") / img_url.lstrip("/"))
+            if Path(local).exists():
+                try:
+                    product_imgs.append(Image.open(local))
+                except Exception:
+                    pass
+        print(f"[imagegen] Loaded {len(product_imgs)} product images")
+    if not product_imgs:
+        print(f"[imagegen] No product images. URLs: {product_images[:2] if product_images else '[]'}")
         return []
 
     client = genai.Client(api_key=GEMINI_API_KEY)
@@ -144,18 +191,33 @@ async def generate_lifestyle_images(
     paths = []
     for i, scene in enumerate(scenes):
         try:
-            # Build edit request: KOL photo + product photo + instruction
+            # Build edit request
             contents = []
             if kol_img:
                 contents.append(kol_img)
-                contents.append("Above: KOL/reviewer reference photo. Match this person's body type and skin tone. "
-                              "Dress them appropriately for the scene context.")
-            contents.append(product_img)
-            contents.append("Above: The real product. Keep its appearance identical in the output.")
+                contents.append("Above: KOL reference photo. IMPORTANT: Keep this person's exact body shape, "
+                              "skin tone, hair style, and proportions. The person in the output must look like "
+                              "the same person in this reference photo. Only change their clothing and setting.")
+            for pi, pimg in enumerate(product_imgs):
+                contents.append(pimg)
+            contents.append(f"Above: {len(product_imgs)} real product photos showing the SAME product from different angles. "
+                          "Look at ALL photos to understand the product's exact appearance (color, shape, material, design). "
+                          "IGNORE any people/models in these photos — use only the KOL reference for the person. "
+                          "The product in your output must match what you see across ALL these reference photos.")
+            if use_kol and kol_img:
+                person_instruction = "Use the KOL reference person with the product."
+            else:
+                person_instruction = f"Show a {end_user_desc} (Vietnamese) with the product in a natural way."
             contents.append(
-                f"Create a new lifestyle photo combining the person and product: {scene} "
-                f"The product must look exactly like the reference photo. "
-                f"Vietnamese setting. High quality product photography for TikTok."
+                f"Create a new lifestyle photo: {scene} "
+                f"{person_instruction} "
+                f"The product must look exactly like the reference photos. "
+                f"Vietnamese setting. High quality product photography for TikTok. "
+                f"IMPORTANT: All details must be realistic and factual. "
+                f"Any text, signs, labels, or writing in the image MUST be correct Vietnamese or English — "
+                f"no gibberish, no fake characters, no misspelled words. "
+                f"Brand names on the product must match the real product photos exactly. "
+                f"Background details (shop signs, menus, posters) must use real, readable text."
             )
 
             print(f"[imagegen] Editing image {i+1}/{len(scenes)}...")
@@ -165,7 +227,7 @@ async def generate_lifestyle_images(
                 config=types.GenerateContentConfig(response_modalities=["IMAGE", "TEXT"]),
             )
 
-            for part in result.candidates[0].content.parts:
+            for part in (result.candidates[0].content.parts if result.candidates and result.candidates[0].content else []):
                 if part.inline_data:
                     img_path = img_dir / f"ai_{i}.png"
                     img_path.write_bytes(part.inline_data.data)

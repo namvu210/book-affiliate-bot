@@ -1,4 +1,4 @@
-"""Extract book/product info from PDF files or Shopee product links."""
+"""Extract product info from PDF files or Shopee product links."""
 
 import json
 import re

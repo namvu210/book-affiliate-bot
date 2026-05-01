@@ -440,6 +440,7 @@ function renderResult(data) {
         html += `<div class="result-card">
             <h3>${p ? label : '📝 Review'}
                 <button class="copy-btn" onclick="copyText('post-${p||'single'}')">📋 Copy</button>
+                <button class="copy-btn" onclick="regenReview('${p||'single'}')" id="btn-regen-${p||'single'}" style="background:#7c3aed;margin-right:4px">🔄 Tạo lại</button>
             </h3>
             <textarea id="post-${p||'single'}" rows="10" style="width:100%;padding:12px;border:1.5px solid #ddd;border-radius:8px;font-size:.9em;line-height:1.6;font-family:inherit;resize:vertical">${postText}</textarea>
             <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -597,6 +598,8 @@ function renderResult(data) {
             <label style="font-weight:normal;font-size:.85em;color:#666">Hoặc upload thêm ảnh/video:
                 <input type="file" id="video-media-upload" accept="image/*,video/*" multiple style="margin-left:8px" onchange="previewVideoUploads(this)">
             </label>
+            <button onclick="generateAiImages()" class="btn" id="btn-ai-images" style="padding:6px 14px;font-size:.85em;background:#7c3aed;margin-top:8px">🖼️ Tạo ảnh AI</button>
+            <span id="ai-img-status" style="font-size:.8em;margin-left:8px;color:#666"></span>
             <div id="video-upload-preview" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px"></div>
             <label style="font-weight:normal;font-size:.85em;color:#666;margin-top:6px;display:block">🏷️ Logo/Watermark:
                 <input type="file" id="video-logo" accept="image/*" style="margin-left:8px">
@@ -1329,15 +1332,91 @@ async function publishVideo(videoUrl) {
     }
 }
 
+// === Review Regeneration (per platform) ===
+async function regenReview(platform) {
+    var btn = document.getElementById('btn-regen-' + platform);
+    var textarea = document.getElementById('post-' + platform);
+    if (!window._lastReviewData) return;
+    btn.textContent = '⏳';
+    btn.disabled = true;
+    try {
+        var data = window._lastReviewData;
+        var book = data.book || {};
+        var fd = new FormData();
+        fd.append('platform', platform);
+        fd.append('title', book.title || '');
+        fd.append('author', book.author || '');
+        fd.append('description', book.description || data.description || '');
+        fd.append('shopee_url', data.affiliate_link || book.shopee_url || '');
+        fd.append('word_count', platform === 'tiktok' ? '150' : '200');
+        // Send audience from the form
+        var audienceSel = document.getElementById('audience-select');
+        if (audienceSel) fd.append('audience', audienceSel.value || '');
+        var caField = document.getElementById('custom-audience-json');
+        if (caField && caField.value) fd.append('custom_audience', caField.value);
+        var resp = await fetch('/regen-review', {method: 'POST', body: fd});
+        var result = await resp.json();
+        if (result.social_post) {
+            textarea.value = result.social_post;
+            if (window._lastReviewData[platform]) {
+                window._lastReviewData[platform] = result;
+            }
+        }
+    } catch(e) { alert('❌ ' + e.message); }
+    btn.textContent = '🔄 Tạo lại';
+    btn.disabled = false;
+}
+
+// === AI Image Generation (standalone, retryable) ===
+async function generateAiImages() {
+    var btn = document.getElementById('btn-ai-images');
+    var status = document.getElementById('ai-img-status');
+    if (!window._lastReviewData) { status.textContent = '❌ Tạo review trước'; return; }
+    btn.disabled = true; btn.textContent = '⏳ Đang tạo...';
+    status.textContent = '';
+    try {
+        var data = window._lastReviewData;
+        var persona = data.tiktok || data.facebook || {};
+        var fd = new FormData();
+        fd.append('title', data.book?.title || '');
+        fd.append('persona_name', 'Khách hàng');
+        fd.append('persona_focus', persona.key_points?.[0] || '');
+        fd.append('product_images', JSON.stringify(data.product_images || []));
+        var resp = await fetch('/generate-ai-images', {method: 'POST', body: fd});
+        var result = await resp.json();
+        var aiImgs = result.ai_images || [];
+        if (aiImgs.length > 0) {
+            var gallery = document.getElementById('vid-img-gallery');
+            if (gallery) {
+                aiImgs.forEach(function(url, i) {
+                    var label = document.createElement('label');
+                    label.style.cssText = 'position:relative;cursor:pointer';
+                    label.innerHTML = '<input type="checkbox" class="vid-img-check" value="'+url+'" checked style="position:absolute;top:4px;left:4px;width:18px;height:18px;z-index:2" onchange="limitVideoImages(this)">' +
+                        '<span style="position:absolute;top:4px;right:28px;background:#7c3aed;color:#fff;font-size:10px;padding:1px 5px;border-radius:4px;z-index:3">🤖 AI</span>' +
+                        '<img src="'+url+'" style="height:100px;border-radius:6px;border:2px solid #7c3aed">' +
+                        '<button type="button" data-img="'+url+'" onclick="regenAiImage(this,this.dataset.img)" style="position:absolute;bottom:4px;right:4px;background:#7c3aed;color:#fff;border:none;border-radius:4px;padding:2px 6px;cursor:pointer;font-size:11px;z-index:3">🔄</button>';
+                    gallery.appendChild(label);
+                });
+            }
+            status.textContent = '✅ ' + aiImgs.length + ' ảnh AI đã tạo';
+        } else {
+            status.textContent = '❌ Không tạo được ảnh AI';
+        }
+    } catch(e) { status.textContent = '❌ ' + e.message; }
+    btn.disabled = false; btn.textContent = '🖼️ Tạo ảnh AI';
+}
+
 // === AI Image Regeneration ===
 async function regenAiImage(btn, oldUrl) {
     var label = btn.parentElement;
     btn.textContent = '⏳';
     btn.disabled = true;
     try {
-        var productImg = (window._productImages || [])[0] || '';
+        var imgs = (window._lastReviewData || {}).product_images || window._productImages || [];
+        var productImg = imgs.find(function(u){ return !u.includes('ai_images'); }) || imgs[0] || '';
+        if (!productImg) throw new Error('Không có ảnh sản phẩm');
         var fd = new FormData();
-        fd.append('scene', 'Create a different lifestyle photo of this product being used. Vietnamese setting, warm lighting, no face shown, crop above chin. Different angle and background from before.');
+        fd.append('scene', 'Create a lifestyle photo of a Vietnamese person with this product. Different angle and background. Warm lighting. TikTok product photography.');
         fd.append('product_image', productImg);
         var resp = await fetch('/regenerate-image', {method: 'POST', body: fd});
         if (!resp.ok) throw new Error('Failed');

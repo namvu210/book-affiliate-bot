@@ -1,4 +1,4 @@
-"""Generate book reviews using Google Gemini."""
+"""Generate product reviews using Google Gemini."""
 
 import json
 
@@ -88,7 +88,7 @@ BIỂU CẢM GIỌNG NÓI (ElevenLabs v3 — KHÔNG tính vào số từ):
    - KHÔNG lạm dụng — mỗi tag phải phù hợp ngữ cảnh
    - Kết hợp tag + dấu câu cho hiệu ứng mạnh: "[excited] Các bạn ơi… cuốn này ĐỈNH THẬT SỰ!"
 
-Ví dụ: '[curious] Mà khoan… các bạn có biết cuốn sách nào đang HOT nhất không? [gasps] Mình vừa đọc xong và… [excited] nó HAY KHÔNG THỂ TIN ĐƯỢC! [laughs] Nghiêm túc luôn!'""",
+Ví dụ: '[curious] Mà khoan… các bạn có biết sản phẩm nào đang HOT nhất không? [gasps] Mình vừa dùng thử và… [excited] nó ĐỈNH KHÔNG THỂ TIN ĐƯỢC! [laughs] Nghiêm túc luôn!'""",
     }
 
     ratings_context = ""
@@ -104,9 +104,9 @@ Ví dụ: '[curious] Mà khoan… các bạn có biết cuốn sách nào đang 
 
     return f"""Bạn là một KOL (Key Opinion Leader) / content creator review sản phẩm trên mạng xã hội tại Việt Nam. Bạn viết review từ góc nhìn người dùng thực sự đã mua và trải nghiệm sản phẩm, KHÔNG phải từ góc nhìn shop bán hàng. Giọng văn tự nhiên, chân thực, có cảm xúc cá nhân.
 
-THÔNG TIN SÁCH:
+THÔNG TIN SẢN PHẨM:
 - Tên: {book.title}
-- Tác giả: {book.author}
+- Tác giả/Thương hiệu: {book.author}
 - Mô tả/Nội dung: {book.description[:3000]}
 {f"- Giá: {book.price}" if book.price else ""}
 {f"- Link mua: {book.shopee_url}" if book.shopee_url and platform != "tiktok" else ""}
@@ -127,7 +127,7 @@ LƯU Ý QUAN TRỌNG:
 
 Trả về JSON với format:
 {{
-  "review": "Bài review chi tiết về sách ({word_count} từ)",
+  "review": "Bài review chi tiết về sản phẩm ({word_count} từ)",
   "social_post": "Bài đăng {platform} hoàn chỉnh (khoảng {word_count} từ)",
   "hashtags": ["danh sách hashtag phù hợp"],
   "hook": "Câu mở đầu gây chú ý (dùng cho video/reel)",

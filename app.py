@@ -1,4 +1,4 @@
-"""Book Affiliate Bot - Phase 1: Extract & Review + Voice Narrative."""
+"""Product Affiliate Bot — Extract, Review, Voice & Video."""
 
 import json
 import os
@@ -20,7 +20,7 @@ from video import generate_tiktok_video, extract_cover_from_pdf
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-app = FastAPI(title="Book Affiliate Bot")
+app = FastAPI(title="Product Affiliate Bot")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 app.mount("/output", StaticFiles(directory=OUTPUT_DIR), name="output")
 templates = Jinja2Templates(directory="templates")
@@ -374,6 +374,25 @@ async def upload_kol(file: UploadFile = File(...)):
     return {"status": "ok", "message": "✅ Đã lưu ảnh KOL!"}
 
 
+@app.post("/regen-review")
+async def regen_review(
+    platform: str = Form(...),
+    title: str = Form(""),
+    author: str = Form(""),
+    description: str = Form(""),
+    shopee_url: str = Form(""),
+    audience: str = Form("phu-huynh-lop-5"),
+    custom_audience: str = Form(""),
+    word_count: int = Form(150),
+):
+    """Regenerate review for a single platform."""
+    from reviewer import generate_review
+    ca = json.loads(custom_audience) if custom_audience else None
+    book = BookInfo(title=title, author=author or "Không rõ tác giả", description=description, shopee_url=shopee_url)
+    result = generate_review(book, audience, platform, ca, word_count)
+    return result
+
+
 @app.post("/generate-ai-images")
 async def generate_ai_images_endpoint(
     title: str = Form(...),
@@ -420,7 +439,7 @@ async def regenerate_image(
                 contents.append("Above: Real product. Keep appearance identical.")
             except Exception:
                 pass
-    contents.append(f"Create a new lifestyle photo: {scene} Vietnamese setting. No face shown, crop above chin. TikTok product photography.")
+    contents.append(f"Create a new lifestyle photo: {scene} The product must look exactly like the reference photo.")
 
     try:
         result = client.models.generate_content(
@@ -428,12 +447,21 @@ async def regenerate_image(
             contents=contents,
             config=gtypes.GenerateContentConfig(response_modalities=["IMAGE", "TEXT"]),
         )
-        for part in result.candidates[0].content.parts:
+        candidates = result.candidates or []
+        if not candidates:
+            print(f"[regen] No candidates returned. Prompt filter: {getattr(result, 'prompt_feedback', 'none')}")
+            raise HTTPException(500, "Gemini blocked or returned no image — try a different product")
+        for part in (candidates[0].content.parts if candidates[0].content else []):
             if part.inline_data:
                 img_path = output_path(ts, "regen.png")
                 Path(str(img_path)).write_bytes(part.inline_data.data)
                 return {"image_url": output_url(ts, "regen.png")}
+        print(f"[regen] Candidates returned but no image data. Finish reason: {getattr(candidates[0], 'finish_reason', 'unknown')}")
+        raise HTTPException(500, "Gemini returned no image — try again")
+    except HTTPException:
+        raise
     except Exception as e:
+        print(f"[regen] Error: {type(e).__name__}: {e}")
         raise HTTPException(500, str(e))
     raise HTTPException(500, "No image generated")
 
