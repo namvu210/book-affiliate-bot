@@ -356,7 +356,7 @@ async def render_video(inp: VideoInput) -> dict:
 
     # Resolve selected images to local paths
     media_paths = []
-    for img_url in inp.selected_images[:8]:
+    for img_url in inp.selected_images[:16]:
         local = str(Path(".") / img_url.lstrip("/"))
         if Path(local).exists():
             media_paths.append(local)
@@ -365,13 +365,13 @@ async def render_video(inp: VideoInput) -> dict:
     if inp.uploaded_media:
         media_dir = output_path(ts, "video_media")
         media_dir.mkdir(parents=True, exist_ok=True)
-        for i, (filename, file_data) in enumerate(inp.uploaded_media[:8]):
+        for i, (filename, file_data) in enumerate(inp.uploaded_media[:16]):
             ext = Path(filename).suffix or ".jpg"
             p = media_dir / f"media_{i}{ext}"
             p.write_bytes(file_data)
             media_paths.append(str(p))
 
-    media_paths = media_paths[:8]
+    media_paths = media_paths[:16]
 
     # Fallback: product_images from review data
     if not media_paths and data.get("product_images"):

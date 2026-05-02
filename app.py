@@ -658,7 +658,7 @@ async def generate_video(
     # Read uploaded files into bytes (can't pass UploadFile to pipeline)
     uploaded_media = []
     if media and media[0].filename:
-        for f in media[:8]:
+        for f in media[:16]:
             uploaded_media.append((f.filename, await f.read()))
 
     inp = VideoInput(

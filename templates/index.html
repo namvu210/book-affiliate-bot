@@ -579,7 +579,7 @@ function renderResult(data) {
                 </label>
             </div>
             ${vidImgs.length > 0 ? `
-                <p style="font-size:.85em;color:#666;margin-bottom:8px">Chọn tối đa 8 ảnh cho video:</p>
+                <p style="font-size:.85em;color:#666;margin-bottom:8px">Chọn tối đa 16 ảnh cho video:</p>
                 <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px" id="vid-img-gallery">
                     ${vidImgs.map((img, i) => {
                         const isAI = img.includes('ai_images');
@@ -862,7 +862,7 @@ function stopMusic() {
 
 function limitVideoImages(cb) {
     const checked = document.querySelectorAll('.vid-img-check:checked');
-    if (checked.length > 8) { cb.checked = false; return; }
+    if (checked.length > 16) { cb.checked = false; return; }
     document.querySelectorAll('.vid-img-check').forEach(c => {
         const img = c.nextElementSibling;
         if (img) img.style.borderColor = c.checked ? '#e94560' : 'transparent';
@@ -1129,7 +1129,7 @@ function previewNovaMedia(input) {
     var preview = document.getElementById('nova-media-preview');
     preview.innerHTML = '';
     // Limit to 8 files
-    if (input.files.length > 8) {
+    if (input.files.length > 16) {
         alert('Tối đa 8 files!');
         input.value = '';
         return;
