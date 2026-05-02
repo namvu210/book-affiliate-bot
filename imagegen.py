@@ -211,17 +211,22 @@ async def generate_lifestyle_images(
                               "Match their exact body shape, skin tone, hair. "
                               "What they are wearing here is NOT the product — ignore their current clothes.")
 
-            # Send one product photo for visual reference
+            # Send product photos for visual reference
+            prod_count = 0
             if product_images:
-                local = str(Path(".") / product_images[0].lstrip("/"))
-                if Path(local).exists():
-                    try:
-                        contents.append(Image.open(local))
-                        contents.append("IMAGE 2 — THE PRODUCT: This is the product to feature. "
-                                      "Match its exact color, shape, material, and design. "
-                                      "Any person/model in this image should be IGNORED — only look at the product itself.")
-                    except Exception:
-                        pass
+                for img_url in product_images[:4]:
+                    local = str(Path(".") / img_url.lstrip("/"))
+                    if Path(local).exists():
+                        try:
+                            contents.append(Image.open(local))
+                            prod_count += 1
+                        except Exception:
+                            pass
+                if prod_count:
+                    contents.append(f"IMAGE 2-{1+prod_count} — THE PRODUCT ({prod_count} photos): "
+                                  "These show the product from different angles. "
+                                  "Match its exact color, shape, material, and design. "
+                                  "IGNORE any person/model in these photos — only look at the product itself.")
 
             if product_desc:
                 contents.append(f"Product description (for clarity): {product_desc}")
