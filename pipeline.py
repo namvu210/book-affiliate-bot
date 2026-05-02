@@ -162,6 +162,22 @@ async def process_product(inp: PipelineInput) -> PipelineResult:
     except Exception as e:
         print(f"[pipeline] AI image gen failed (continuing): {e}")
 
+    # Shuffle: 1 AI image first, 1 AI image last, rest randomized in middle
+    import random
+    ai = [img for img in images if "ai_images" in img]
+    real = [img for img in images if "ai_images" not in img]
+    if len(ai) >= 2:
+        first_ai = ai[0]
+        last_ai = ai[-1]
+        middle = real + ai[1:-1]
+        random.shuffle(middle)
+        images = [first_ai] + middle + [last_ai]
+    elif len(ai) == 1:
+        random.shuffle(real)
+        images = [ai[0]] + real
+    else:
+        random.shuffle(images)
+
     result["product_images"] = images
     result["affiliate_link"] = book.shopee_url or ""
 
