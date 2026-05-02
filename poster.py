@@ -63,12 +63,10 @@ async def _post_facebook_reel(req: PostRequest) -> PostResult:
     if not Path(video_path).exists():
         return PostResult(platform="facebook", success=False, message=f"Video không tồn tại: {video_path}")
 
-    # Build caption — hashtags and affiliate link are separate from review text
+    # Build caption — clean, no links (affiliate goes in comment)
     caption = req.caption
     if req.hashtags:
         caption += "\n\n" + " ".join(f"#{h.lstrip('#')}" for h in req.hashtags)
-    if req.affiliate_link:
-        caption += f"\n\n🛒 Mua ngay: {req.affiliate_link}"
 
     print(f"[facebook] Caption length: {len(caption)}, hashtags: {len(req.hashtags)}, affiliate: {'yes' if req.affiliate_link else 'no'}")
 
@@ -117,6 +115,16 @@ async def _post_facebook_reel(req: PostRequest) -> PostResult:
             pub_data = publish_resp.json()
             if pub_data.get("success") or pub_data.get("id"):
                 post_id = pub_data.get("id", video_id)
+                # Auto-comment with affiliate link (more clickable than in caption)
+                if req.affiliate_link:
+                    try:
+                        await client.post(
+                            f"https://graph.facebook.com/v21.0/{post_id}/comments",
+                            params={"access_token": access_token},
+                            data={"message": f"🛒 Mua ngay tại đây: {req.affiliate_link}"},
+                        )
+                    except Exception as e:
+                        print(f"[facebook] Comment failed: {e}")
                 return PostResult(platform="facebook", success=True, message="✅ Đã đăng Reel!", post_id=str(post_id))
             else:
                 return PostResult(platform="facebook", success=False, message=f"Publish failed: {pub_data.get('error', {}).get('message', str(pub_data))}")
