@@ -62,8 +62,10 @@ AFFIPAD_TOOL_ID = os.getenv("AFFIPAD_TOOL_ID", "")
 # n8n posting automation
 N8N_WEBHOOK_URL = os.getenv("N8N_WEBHOOK_URL", "")
 
-# Bitly link shortener
-BITLY_API_KEY = os.getenv("BITLY_API_KEY", "")  # e.g. http://localhost:5678/webhook/publish
+# Bitly / Short.io link shortener
+BITLY_API_KEY = os.getenv("BITLY_API_KEY", "")
+SHORTIO_API_KEY = os.getenv("SHORTIO_API_KEY", "")
+SHORTIO_DOMAIN = os.getenv("SHORTIO_DOMAIN", "")  # e.g. "lnk.to" or your custom domain  # e.g. http://localhost:5678/webhook/publish
 
 # Target audience templates
 AUDIENCES = {

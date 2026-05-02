@@ -4,7 +4,7 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from config import make_ts, output_path, output_url, OUTPUT_DIR, AFFIPAD_API_KEY, AFFIPAD_TOOL_ID, BITLY_API_KEY
+from config import make_ts, output_path, output_url, OUTPUT_DIR, AFFIPAD_API_KEY, AFFIPAD_TOOL_ID, BITLY_API_KEY, SHORTIO_API_KEY, SHORTIO_DOMAIN
 from extractor import BookInfo, extract_from_shopee, download_images
 from reviewer import generate_review_all_platforms, generate_json
 from tts import generate_audio
@@ -35,6 +35,31 @@ class PipelineResult:
     error: str = ""
 
 
+async def _shorten_url(client, long_url: str) -> str:
+    """Shorten a URL using Short.io or Bitly."""
+    # Try Short.io (1000 free/month)
+    if SHORTIO_API_KEY and SHORTIO_DOMAIN:
+        try:
+            r = await client.post("https://api.short.io/links", headers={
+                "Authorization": SHORTIO_API_KEY, "Content-Type": "application/json",
+            }, json={"domain": SHORTIO_DOMAIN, "originalURL": long_url}, timeout=10)
+            if r.status_code in (200, 201):
+                return r.json().get("shortURL", "")
+        except Exception as e:
+            print(f"[shortio] Failed: {e}")
+    # Try Bitly
+    if BITLY_API_KEY:
+        try:
+            r = await client.post("https://api-ssl.bitly.com/v4/shorten", headers={
+                "Authorization": f"Bearer {BITLY_API_KEY}", "Content-Type": "application/json",
+            }, json={"long_url": long_url}, timeout=10)
+            if r.status_code in (200, 201):
+                return r.json().get("link", "")
+        except Exception as e:
+            print(f"[bitly] Failed: {e}")
+    return ""
+
+
 async def convert_to_affiliate_link(product_url: str) -> str:
     """Convert a Shopee product URL to a short affiliate link via AffiPad + TinyURL."""
     print(f"[affipad] API_KEY: {'set' if AFFIPAD_API_KEY else 'MISSING'}, TOOL_ID: {'set' if AFFIPAD_TOOL_ID else 'MISSING'}")
@@ -60,19 +85,11 @@ async def convert_to_affiliate_link(product_url: str) -> str:
             if not long_link:
                 return ""
 
-            # Shorten with Bitly (Shopee-recommended, works from Facebook)
-            if BITLY_API_KEY and long_link:
-                try:
-                    short_resp = await client.post(
-                        "https://api-ssl.bitly.com/v4/shorten",
-                        headers={"Authorization": f"Bearer {BITLY_API_KEY}", "Content-Type": "application/json"},
-                        json={"long_url": long_link},
-                        timeout=10,
-                    )
-                    if short_resp.status_code == 200 or short_resp.status_code == 201:
-                        return short_resp.json().get("link", long_link)
-                except Exception as e:
-                    print(f"[bitly] Shortening failed: {e}")
+            # Shorten link: try Short.io (1000 free/month), then Bitly, then raw
+            if long_link:
+                short = await _shorten_url(client, long_link)
+                if short:
+                    return short
             return long_link
     except Exception as e:
         print(f"[affipad] Failed: {e}")
