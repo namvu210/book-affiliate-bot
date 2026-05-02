@@ -134,8 +134,91 @@ async def _post_facebook_reel(req: PostRequest) -> PostResult:
 
 
 async def _post_tiktok(req: PostRequest) -> PostResult:
-    """Post to TikTok (placeholder — requires developer app approval)."""
-    return PostResult(platform="tiktok", success=False, message="TikTok posting chưa sẵn sàng — cần đăng ký developer app")
+    """Post to TikTok via Content Posting API (FILE_UPLOAD, draft mode)."""
+    from auth import get_access_token, _load_tokens
+
+    access_token = get_access_token("tiktok")
+    if not access_token:
+        return PostResult(platform="tiktok", success=False, message="TikTok chưa kết nối. Vào ⚙️ API Keys → kết nối TikTok.")
+
+    video_path = req.video_path
+    if not Path(video_path).exists() and "/output/" in video_path:
+        video_path = str(Path(OUTPUT_DIR) / video_path.split("/output/")[-1])
+    if not Path(video_path).exists():
+        return PostResult(platform="tiktok", success=False, message=f"Video không tồn tại: {video_path}")
+
+    file_size = Path(video_path).stat().st_size
+    caption = req.caption
+    if req.hashtags:
+        caption += "\n\n" + " ".join(f"#{h.lstrip('#')}" for h in req.hashtags)
+
+    try:
+        async with httpx.AsyncClient(timeout=120) as client:
+            # Step 1: Initialize upload
+            init_resp = await client.post(
+                "https://open.tiktokapis.com/v2/post/publish/inbox/video/init/",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "source_info": {
+                        "source": "FILE_UPLOAD",
+                        "video_size": file_size,
+                        "chunk_size": file_size,
+                        "total_chunk_count": 1,
+                    },
+                },
+            )
+            init_data = init_resp.json()
+            if init_data.get("error", {}).get("code") != "ok":
+                err = init_data.get("error", {}).get("message", str(init_data))
+                return PostResult(platform="tiktok", success=False, message=f"Init failed: {err}")
+
+            publish_id = init_data["data"]["publish_id"]
+            upload_url = init_data["data"]["upload_url"]
+
+            # Step 2: Upload video binary
+            with open(video_path, "rb") as f:
+                video_bytes = f.read()
+
+            upload_resp = await client.put(
+                upload_url,
+                headers={
+                    "Content-Range": f"bytes 0-{file_size - 1}/{file_size}",
+                    "Content-Type": "video/mp4",
+                },
+                content=video_bytes,
+            )
+
+            if upload_resp.status_code not in (200, 201):
+                return PostResult(platform="tiktok", success=False, message=f"Upload failed: HTTP {upload_resp.status_code}")
+
+            # Step 3: Check publish status
+            for _ in range(10):
+                import asyncio
+                await asyncio.sleep(3)
+                status_resp = await client.post(
+                    "https://open.tiktokapis.com/v2/post/publish/status/fetch/",
+                    headers={
+                        "Authorization": f"Bearer {access_token}",
+                        "Content-Type": "application/json",
+                    },
+                    json={"publish_id": publish_id},
+                )
+                status_data = status_resp.json()
+                status = status_data.get("data", {}).get("status")
+
+                if status == "PUBLISH_COMPLETE":
+                    return PostResult(platform="tiktok", success=True, message="✅ Video đã upload lên TikTok (draft)! Mở TikTok app để xác nhận đăng.", post_id=publish_id)
+                elif status == "FAILED":
+                    reason = status_data.get("data", {}).get("fail_reason", "unknown")
+                    return PostResult(platform="tiktok", success=False, message=f"Upload failed: {reason}")
+
+            return PostResult(platform="tiktok", success=True, message="✅ Video đang xử lý trên TikTok. Mở TikTok app để kiểm tra.", post_id=publish_id)
+
+    except Exception as e:
+        return PostResult(platform="tiktok", success=False, message=str(e))
 
 
 async def _post_youtube(req: PostRequest) -> PostResult:

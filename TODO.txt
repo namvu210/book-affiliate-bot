@@ -1,11 +1,13 @@
 TODO - Book Affiliate Bot
 =========================
-Date: 2026-04-30
+Updated: 2026-05-02
 
-## URGENT — Blockers for posting
-- [ ] Fix video FPS from 10 to 24 (TikTok min 23fps, Facebook min 24fps)
-      → video/render.py, change fps = 10 to fps = 24
-      → Test video quality and render time impact
+## DONE ✅
+- [x] Fix video FPS from 10 to 24 (render.py:77, fps=24)
+- [x] Implement Facebook Reels in poster.py (full 3-step Graph API + auto-comment affiliate link)
+- [x] OAuth flow for TikTok, YouTube, Facebook (auth.py + app.py routes)
+- [x] .gitignore entries for kol/, output/, voices/, templates_video/
+- [x] n8n webhook URL config (config.py)
 
 ## Platform Setup (manual, no code)
 - [ ] Register TikTok developer app at developers.tiktok.com
@@ -17,20 +19,14 @@ Date: 2026-04-30
 - [ ] Sign up for AccessTrade at accesstrade.vn
       → Apply to Shopee campaign
       → Get API key
-      → Test product detail API (check if returns multiple images)
 
 ## Posting Module
 - [ ] Implement TikTok upload in poster.py (FILE_UPLOAD method)
-      → OAuth flow for access token
+      → OAuth is done, need actual upload logic
       → Init upload → PUT video binary → Check status
       → Note: uploads as draft, user confirms in TikTok app
-- [ ] Implement Facebook Reels in poster.py
-      → POST /{page_id}/video_reels
-      → Direct publish (no user confirmation needed)
-      → 30 reels/day limit
-- [ ] Add YouTube Shorts posting (YouTube Data API v3)
-      → Google Cloud project + OAuth
-      → videos.insert endpoint
+- [ ] Implement YouTube Shorts in poster.py
+      → OAuth is done, need videos.insert endpoint call
 
 ## AccessTrade Integration
 - [ ] Test AccessTrade product detail API — does it return multiple images?
@@ -40,7 +36,14 @@ Date: 2026-04-30
       → Product discovery (trending products)
 - [ ] Integrate "top sản phẩm bán chạy" for auto product discovery
 
-## Testing Backlog
+## Code Cleanup
+- [ ] Replace 34 debug print() calls with logging module (across 6 files)
+- [ ] Add music/ to .gitignore
+- [ ] Clarify or remove _can_use_ffmpeg_pipeline dual-path in render.py
+      → Currently hybrid PIL+ffmpeg — is the pure-ffmpeg path still needed?
+
+## Testing (no tests exist yet)
+- [ ] Set up pytest
 - [ ] Test bookmarklet on different Shopee product types
 - [ ] Test batch generation with 5+ products
 - [ ] Test AI image generation quality with KOL photo
@@ -48,14 +51,8 @@ Date: 2026-04-30
 - [ ] Test affiliate link in review CTA (does it track?)
 - [ ] Verify ElevenLabs voice in batch mode
 
-## Code Cleanup
-- [ ] Remove dead ffmpeg pipeline code from video/render.py (~150 lines)
-- [ ] Replace debug prints with proper logging module
-- [ ] Add .gitignore entries for kol/, output/, music/ cached files
-
-## Future (not tomorrow)
+## Future
 - [ ] Video mode (native video clip playback)
-- [ ] n8n integration as alternative to direct posting
 - [ ] Auto-posting scheduler (post at optimal times)
 - [ ] Analytics dashboard (which products convert)
 - [ ] Windows x86 deployment testing

@@ -69,14 +69,26 @@ def disconnect_platform(platform: str):
 # === TikTok OAuth ===
 
 def tiktok_auth_url() -> str:
+    import hashlib, base64, secrets
     client_key = os.getenv("TIKTOK_CLIENT_KEY", "")
     redirect = os.getenv("TIKTOK_REDIRECT_URI", "http://localhost:8000/callback/tiktok")
+    # PKCE
+    code_verifier = secrets.token_urlsafe(43)
+    code_challenge = base64.urlsafe_b64encode(
+        hashlib.sha256(code_verifier.encode()).digest()
+    ).rstrip(b"=").decode()
+    # Store verifier for token exchange
+    tokens = _load_tokens()
+    tokens["_tiktok_pkce"] = code_verifier
+    _save_tokens(tokens)
     return (
         f"https://www.tiktok.com/v2/auth/authorize/"
         f"?client_key={client_key}"
         f"&scope=video.upload,user.info.basic"
         f"&response_type=code"
         f"&redirect_uri={redirect}"
+        f"&code_challenge={code_challenge}"
+        f"&code_challenge_method=S256"
     )
 
 
@@ -84,6 +96,10 @@ async def tiktok_exchange_code(code: str) -> dict:
     client_key = os.getenv("TIKTOK_CLIENT_KEY", "")
     client_secret = os.getenv("TIKTOK_CLIENT_SECRET", "")
     redirect = os.getenv("TIKTOK_REDIRECT_URI", "http://localhost:8000/callback/tiktok")
+    # Retrieve PKCE verifier
+    tokens = _load_tokens()
+    code_verifier = tokens.pop("_tiktok_pkce", "")
+    _save_tokens(tokens)
     async with httpx.AsyncClient() as client:
         resp = await client.post("https://open.tiktokapis.com/v2/oauth/token/", data={
             "client_key": client_key,
@@ -91,6 +107,7 @@ async def tiktok_exchange_code(code: str) -> dict:
             "code": code,
             "grant_type": "authorization_code",
             "redirect_uri": redirect,
+            "code_verifier": code_verifier,
         })
         data = resp.json()
         if "access_token" in data:

@@ -36,6 +36,21 @@ async def home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request, "audiences": AUDIENCES, "default_voice_speed": DEFAULT_VOICE_SPEED})
 
 
+@app.get("/terms", response_class=HTMLResponse)
+async def terms(request: Request):
+    return templates.TemplateResponse("terms.html", {"request": request})
+
+
+@app.get("/privacy", response_class=HTMLResponse)
+async def privacy(request: Request):
+    return templates.TemplateResponse("privacy.html", {"request": request})
+
+
+@app.get("/tiktok-demo", response_class=HTMLResponse)
+async def tiktok_demo(request: Request):
+    return templates.TemplateResponse("tiktok-demo.html", {"request": request})
+
+
 @app.get("/api/elevenlabs-voices")
 async def elevenlabs_voices():
     """List available ElevenLabs voices."""
