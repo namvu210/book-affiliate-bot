@@ -526,7 +526,7 @@ async def get_settings():
     keys = ["TIKTOK_CLIENT_KEY", "TIKTOK_CLIENT_SECRET",
             "YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET",
             "FACEBOOK_APP_ID", "FACEBOOK_APP_SECRET",
-            "ELEVENLABS_API_KEY", "AFFIPAD_API_KEY", "GEMINI_API_KEY"]
+            "ELEVENLABS_API_KEY", "AFFIPAD_API_KEY", "BITLY_API_KEY", "GEMINI_API_KEY"]
     return {k: bool(os.getenv(k, "")) for k in keys}
 
 

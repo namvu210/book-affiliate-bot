@@ -4,7 +4,7 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from config import make_ts, output_path, output_url, OUTPUT_DIR, AFFIPAD_API_KEY, AFFIPAD_TOOL_ID
+from config import make_ts, output_path, output_url, OUTPUT_DIR, AFFIPAD_API_KEY, AFFIPAD_TOOL_ID, BITLY_API_KEY
 from extractor import BookInfo, extract_from_shopee, download_images
 from reviewer import generate_review_all_platforms, generate_json
 from tts import generate_audio
@@ -60,14 +60,20 @@ async def convert_to_affiliate_link(product_url: str) -> str:
             if not long_link:
                 return ""
 
-            # Step 2: Shorten with TinyURL
-            try:
-                short_resp = await client.get(f"https://tinyurl.com/api-create.php?url={quote(long_link)}", timeout=10)
-                if short_resp.status_code == 200 and short_resp.text.startswith("http"):
-                    return short_resp.text.strip()
-            except Exception:
-                pass
-            return long_link  # fallback to long link
+            # Shorten with Bitly (Shopee-recommended, works from Facebook)
+            if BITLY_API_KEY and long_link:
+                try:
+                    short_resp = await client.post(
+                        "https://api-ssl.bitly.com/v4/shorten",
+                        headers={"Authorization": f"Bearer {BITLY_API_KEY}", "Content-Type": "application/json"},
+                        json={"long_url": long_link},
+                        timeout=10,
+                    )
+                    if short_resp.status_code == 200 or short_resp.status_code == 201:
+                        return short_resp.json().get("link", long_link)
+                except Exception as e:
+                    print(f"[bitly] Shortening failed: {e}")
+            return long_link
     except Exception as e:
         print(f"[affipad] Failed: {e}")
     return ""
