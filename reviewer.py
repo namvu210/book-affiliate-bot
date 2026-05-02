@@ -128,10 +128,10 @@ LƯU Ý QUAN TRỌNG:
 Trả về JSON với format:
 {{
   "review": "Bài review chi tiết về sản phẩm ({word_count} từ)",
-  "social_post": "Bài đăng {platform} hoàn chỉnh (khoảng {word_count} từ)",
-  "hashtags": ["danh sách hashtag phù hợp"],
+  "social_post": "Bài đăng {platform} hoàn chỉnh (khoảng {word_count} từ) — KHÔNG chứa hashtag, KHÔNG chứa link",
+  "hashtags": ["danh sách hashtag phù hợp — CHỈ đặt ở đây, KHÔNG trong social_post"],
   "hook": "Câu mở đầu gây chú ý (dùng cho video/reel)",
-  "key_points": ["3-5 điểm nổi bật của sách"],
+  "key_points": ["3-5 điểm nổi bật của sản phẩm"],
   "cta": "Lời kêu gọi hành động"
 }}
 

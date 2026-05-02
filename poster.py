@@ -63,9 +63,9 @@ async def _post_facebook_reel(req: PostRequest) -> PostResult:
     if not Path(video_path).exists():
         return PostResult(platform="facebook", success=False, message=f"Video không tồn tại: {video_path}")
 
-    # Build caption — avoid duplicating hashtags already in the text
+    # Build caption — hashtags and affiliate link are separate from review text
     caption = req.caption
-    if req.hashtags and not any(f"#{h.lstrip('#')}" in caption for h in req.hashtags[:1]):
+    if req.hashtags:
         caption += "\n\n" + " ".join(f"#{h.lstrip('#')}" for h in req.hashtags)
     if req.affiliate_link:
         caption += f"\n\n🛒 Mua ngay: {req.affiliate_link}"
