@@ -12,7 +12,7 @@ from config import GEMINI_API_KEY, output_path, output_url
 EDIT_MODEL = "gemini-2.5-flash-image"
 SCENE_MODEL = "gemini-2.5-flash-lite"
 KOL_DIR = Path(__file__).parent / "kol"
-MAX_AI_IMAGES = 2
+MAX_AI_IMAGES = 3
 
 
 def save_kol_photo(data: bytes, filename: str) -> str:
@@ -68,6 +68,10 @@ def generate_scene_descriptions(product_title: str, persona: dict, num_scenes: i
         f"  * Choose the most NATURAL setting where this product would actually be used/worn\n"
         f"- Camera angle (close-up, waist-up, full body)\n"
         f"- Lighting and mood\n\n"
+        f"MANDATORY: The FIRST image must be a product close-up/detail shot — "
+        f"focus on the product itself (texture, material, label, design details). "
+        f"No full body, no person — just the product up close. "
+        f"The remaining images show the person with the product.\n\n"
         f"Keep each instruction under 100 words.\n"
         f"Return JSON array of strings only."
     )
@@ -167,8 +171,11 @@ async def generate_lifestyle_images(
     if kol_path and use_kol:
         try:
             kol_img = Image.open(kol_path)
+            print(f"[imagegen] KOL photo loaded: {kol_path}")
         except Exception:
-            pass
+            print(f"[imagegen] KOL photo failed to load")
+    else:
+        print(f"[imagegen] KOL not used (use_kol={use_kol}, kol_path={'set' if kol_path else 'none'})")
 
     product_imgs = []
     if product_images:
@@ -205,7 +212,9 @@ async def generate_lifestyle_images(
                           "IGNORE any people/models in these photos — use only the KOL reference for the person. "
                           "The product in your output must match what you see across ALL these reference photos.")
             if use_kol and kol_img:
-                person_instruction = "Use the KOL reference person with the product."
+                person_instruction = ("Use the KOL reference person with the product. "
+                                     "The person MUST have the SAME body shape, skin tone, and hair as the KOL reference photo above. "
+                                     "This is critical — do NOT use a different person.")
             else:
                 person_instruction = f"Show a {end_user_desc} (Vietnamese) with the product in a natural way."
             contents.append(
