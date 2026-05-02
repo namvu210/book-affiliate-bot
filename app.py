@@ -91,6 +91,28 @@ async def get_music(category: str = "", q: str = "", refresh: bool = False, sour
     return await search_music(category, q, refresh, source)
 
 
+@app.post("/fetch-product-title")
+async def fetch_product_title(request: Request):
+    """Get product title from AffiPad when URL has no readable slug."""
+    data = await request.json()
+    url = data.get("url", "")
+    api_key = os.getenv("AFFIPAD_API_KEY", "")
+    if not api_key or not url:
+        return {"title": ""}
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post("https://api.affipad.com/v1/product-info",
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json={"url": url})
+            d = resp.json()
+            if d.get("success"):
+                return {"title": d["data"]["productInfo"].get("name", "")}
+    except Exception:
+        pass
+    return {"title": ""}
+
+
 @app.post("/suggest-personas")
 async def suggest_personas(title: str = Form(...)):
     """Use LLM to suggest 3 customer personas for a product."""

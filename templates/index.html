@@ -717,7 +717,20 @@ async function suggestPersonas() {
     const urlInput = document.querySelector('#panel-url input[name="url"]');
     const url = urlInput?.value?.trim();
     if (!url) { alert('Nhập link Shopee trước!'); return; }
-    const slug = decodeURIComponent(url.split('shopee.vn/')[1] || '').split('-i.')[0].replace(/-/g, ' ');
+    let slug = decodeURIComponent(url.split('shopee.vn/')[1] || '').split('-i.')[0].replace(/-/g, ' ');
+    // If slug is not readable (e.g. "product/123/456"), try bookmarklet data or AffiPad
+    if (slug.startsWith('product/') || slug.length < 5) {
+        if (window._shopeeBookmarkletData?.title) {
+            slug = window._shopeeBookmarkletData.title;
+        } else {
+            // Fetch from AffiPad via backend
+            try {
+                const r = await fetch('/fetch-product-title', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({url:url})});
+                const d = await r.json();
+                if (d.title) slug = d.title;
+            } catch(e) {}
+        }
+    }
     const sel = document.getElementById('audience-select');
     sel.innerHTML = '<option disabled selected>⏳ Đang gợi ý...</option>';
     try {
