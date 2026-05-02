@@ -202,20 +202,33 @@ async def generate_lifestyle_images(
     paths = []
     for i, scene in enumerate(scenes):
         try:
-            # Build edit request — KOL photo + TEXT description of product (no product photos to avoid confusion)
+            # Build edit request — KOL photo + ONE product photo + TEXT description
+            # Separate clearly so model doesn't confuse KOL's clothes with product
             contents = []
             if kol_img:
                 contents.append(kol_img)
-                contents.append("Above: KOL reference photo. IMPORTANT: Keep this person's exact body shape, "
-                              "skin tone, hair style, and proportions. The person in the output must look like "
-                              "the same person in this reference photo. Only change their clothing and setting. "
-                              "The items the KOL is wearing in this photo are NOT the product.")
+                contents.append("IMAGE 1 — THE PERSON (KOL): This is the person who will appear in the photo. "
+                              "Match their exact body shape, skin tone, hair. "
+                              "What they are wearing here is NOT the product — ignore their current clothes.")
+
+            # Send one product photo for visual reference
+            if product_images:
+                local = str(Path(".") / product_images[0].lstrip("/"))
+                if Path(local).exists():
+                    try:
+                        contents.append(Image.open(local))
+                        contents.append("IMAGE 2 — THE PRODUCT: This is the product to feature. "
+                                      "Match its exact color, shape, material, and design. "
+                                      "Any person/model in this image should be IGNORED — only look at the product itself.")
+                    except Exception:
+                        pass
+
             if product_desc:
-                contents.append(f"THE PRODUCT (described from real photos, not shown here to avoid confusion): {product_desc}")
+                contents.append(f"Product description (for clarity): {product_desc}")
+
             if use_kol and kol_img:
-                person_instruction = ("Use the KOL reference person with the product. "
-                                     "The person MUST have the SAME body shape, skin tone, and hair as the KOL reference photo above. "
-                                     "This is critical — do NOT use a different person.")
+                person_instruction = ("Put the PRODUCT (Image 2) on the PERSON (Image 1). "
+                                     "The person must look like Image 1. The product must look like Image 2.")
             else:
                 person_instruction = f"Show a {end_user_desc} (Vietnamese) with the product in a natural way."
             contents.append(
