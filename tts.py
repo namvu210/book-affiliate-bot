@@ -12,8 +12,10 @@ VOICE_DIR = Path(__file__).parent / "voices"
 VOICE_DIR.mkdir(exist_ok=True)
 
 
-def _sanitize(text: str) -> str:
-    text = re.sub(r'\[\d+[-–]\d+s?\]', '', text)
+def _sanitize(text: str, keep_audio_tags: bool = False) -> str:
+    text = re.sub(r'\[\d+[-–]\d+s?\]', '', text)  # strip timestamps [0-3s]
+    if not keep_audio_tags:
+        text = re.sub(r'\[[a-zA-Z_]+\]', '', text)  # strip audio tags [excited] for gTTS
     text = strip_emoji(text)
     text = re.sub(r'#\w+', '', text)
     text = re.sub(r'https?://\S+', '', text)
@@ -55,7 +57,7 @@ async def generate_audio(
     rate: str = "",
 ) -> str:
     """Generate speech audio. speed=100 is normal, 175 is 1.75x."""
-    clean = _sanitize(text)
+    clean = _sanitize(text, keep_audio_tags=(voice_type == "elevenlabs"))
     if not clean:
         return ""
 
