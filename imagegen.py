@@ -34,10 +34,11 @@ def get_kol_photo() -> str | None:
     return None
 
 
-def generate_scene_descriptions(product_title: str, persona: dict, num_scenes: int, product_images: list[str] = None) -> list[str]:
-    """Use multimodal LLM to generate scene descriptions for image editing."""
+def generate_scene_descriptions(product_title: str, persona: dict, num_scenes: int, product_images: list[str] = None) -> tuple[str, list[str]]:
+    """Use multimodal LLM to generate product description + scene descriptions.
+    Returns (product_description, [scene1, scene2, ...])."""
     if num_scenes <= 0:
-        return []
+        return "", []
     persona_name = persona.get("name", "Khách hàng") if isinstance(persona, dict) else str(persona)
     persona_focus = persona.get("focus", "") if isinstance(persona, dict) else ""
 
@@ -73,7 +74,7 @@ def generate_scene_descriptions(product_title: str, persona: dict, num_scenes: i
         f"No full body, no person — just the product up close. "
         f"The remaining images show the person with the product.\n\n"
         f"Keep each instruction under 100 words.\n"
-        f"Return JSON array of strings only."
+        f"Return JSON object: {{\"product_description\": \"detailed description of the product appearance from the photos\", \"scenes\": [\"scene1\", \"scene2\", ...]}}"
     )
 
     contents = []
@@ -113,11 +114,16 @@ def generate_scene_descriptions(product_title: str, persona: dict, num_scenes: i
         if text.startswith("```"):
             text = text.split("\n", 1)[1].rsplit("```", 1)[0]
         result = json.loads(text)
-        if isinstance(result, list):
-            return [s for s in result if isinstance(s, str)][:num_scenes]
+        if isinstance(result, dict):
+            desc = result.get("product_description", "")
+            scenes = [s for s in result.get("scenes", []) if isinstance(s, str)][:num_scenes]
+            print(f"[imagegen] Product desc: {desc[:80]}...")
+            return desc, scenes
+        elif isinstance(result, list):
+            return "", [s for s in result if isinstance(s, str)][:num_scenes]
     except Exception as e:
         print(f"[imagegen] Scene description failed: {e}")
-    return []
+    return "", []
 
 
 def _detect_end_user(product_title: str, persona_name: str) -> dict:
@@ -128,9 +134,17 @@ def _detect_end_user(product_title: str, persona_name: str) -> dict:
             model=SCENE_MODEL,
             contents=(
                 f"Product: {product_title}\nBuyer: {persona_name}\n\n"
-                f"Is the buyer the same person who USES this product?\n"
-                f"Examples: adult buys shirt for themselves → same. Parent buys toy for child → different.\n"
-                f"Return JSON: {{\"same_person\": true/false, \"end_user\": \"description of who uses it\"}}"
+                f"Does the buyer USE this product themselves? Answer same_person=true if YES.\n\n"
+                f"same_person=true examples:\n"
+                f"- Woman buys women's clothing → true (she wears it)\n"
+                f"- Man buys men's shoes → true\n"
+                f"- Office worker buys laptop → true\n"
+                f"- Woman buys skincare → true\n\n"
+                f"same_person=false examples:\n"
+                f"- Parent buys children's book → false (child reads it)\n"
+                f"- Owner buys pet food → false (pet eats it)\n"
+                f"- Person buys gift → false (recipient uses it)\n\n"
+                f"Return JSON: {{\"same_person\": true/false, \"end_user\": \"who uses it\"}}"
             ),
             config=types.GenerateContentConfig(max_output_tokens=100, response_mime_type="application/json"),
         )
@@ -161,7 +175,7 @@ async def generate_lifestyle_images(
     end_user_desc = roles.get("end_user", persona_name)
     print(f"[imagegen] Roles: same_person={use_kol}, end_user={end_user_desc}")
 
-    scenes = generate_scene_descriptions(product_title, persona, num, product_images)
+    product_desc, scenes = generate_scene_descriptions(product_title, persona, num, product_images)
     if not scenes:
         return []
 
@@ -177,18 +191,8 @@ async def generate_lifestyle_images(
     else:
         print(f"[imagegen] KOL not used (use_kol={use_kol}, kol_path={'set' if kol_path else 'none'})")
 
-    product_imgs = []
-    if product_images:
-        for img_url in product_images[:4]:
-            local = str(Path(".") / img_url.lstrip("/"))
-            if Path(local).exists():
-                try:
-                    product_imgs.append(Image.open(local))
-                except Exception:
-                    pass
-        print(f"[imagegen] Loaded {len(product_imgs)} product images")
-    if not product_imgs:
-        print(f"[imagegen] No product images. URLs: {product_images[:2] if product_images else '[]'}")
+    if not product_desc and not scenes:
+        print(f"[imagegen] No product description or scenes generated")
         return []
 
     client = genai.Client(api_key=GEMINI_API_KEY)
@@ -198,19 +202,16 @@ async def generate_lifestyle_images(
     paths = []
     for i, scene in enumerate(scenes):
         try:
-            # Build edit request
+            # Build edit request — KOL photo + TEXT description of product (no product photos to avoid confusion)
             contents = []
             if kol_img:
                 contents.append(kol_img)
                 contents.append("Above: KOL reference photo. IMPORTANT: Keep this person's exact body shape, "
                               "skin tone, hair style, and proportions. The person in the output must look like "
-                              "the same person in this reference photo. Only change their clothing and setting.")
-            for pi, pimg in enumerate(product_imgs):
-                contents.append(pimg)
-            contents.append(f"Above: {len(product_imgs)} real product photos showing the SAME product from different angles. "
-                          "Look at ALL photos to understand the product's exact appearance (color, shape, material, design). "
-                          "IGNORE any people/models in these photos — use only the KOL reference for the person. "
-                          "The product in your output must match what you see across ALL these reference photos.")
+                              "the same person in this reference photo. Only change their clothing and setting. "
+                              "The items the KOL is wearing in this photo are NOT the product.")
+            if product_desc:
+                contents.append(f"THE PRODUCT (described from real photos, not shown here to avoid confusion): {product_desc}")
             if use_kol and kol_img:
                 person_instruction = ("Use the KOL reference person with the product. "
                                      "The person MUST have the SAME body shape, skin tone, and hair as the KOL reference photo above. "
