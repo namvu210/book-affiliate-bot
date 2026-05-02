@@ -60,8 +60,35 @@ def extract_from_pdf(file_path: str) -> BookInfo:
 
 
 async def extract_from_shopee(url: str) -> BookInfo:
-    """Extract product info from Shopee URL (title from URL slug, no browser needed)."""
+    """Extract product info from Shopee URL."""
     title = _title_from_url(url)
+
+    # If URL has no readable slug (e.g. /product/shopid/itemid), try AffiPad
+    if not title or title.startswith("product/") or len(title) < 5:
+        try:
+            import os
+            api_key = os.getenv("AFFIPAD_API_KEY", "")
+            if api_key:
+                async with httpx.AsyncClient(timeout=15) as client:
+                    resp = await client.post("https://api.affipad.com/v1/product-info",
+                        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                        json={"url": url})
+                    data = resp.json()
+                    if data.get("success"):
+                        info = data["data"]["productInfo"]
+                        title = info.get("name", title)
+                        price = info.get("price")
+                        return BookInfo(
+                            title=title or "Sản phẩm từ Shopee",
+                            author=_guess_author(title, ""),
+                            description="",
+                            price=f"₫{price:,.0f}" if price else None,
+                            shopee_url=url,
+                            source="shopee",
+                        )
+        except Exception as e:
+            print(f"[extractor] AffiPad product-info failed: {e}")
+
     return BookInfo(
         title=title or "Sản phẩm từ Shopee",
         author=_guess_author(title, ""),
