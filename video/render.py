@@ -348,15 +348,32 @@ def _render_pil_pipeline(
 
     # Intro
     if intro_frames > 0:
-        intro_img = _make_slide(intro_bg_path, W, H, (15, 15, 35))
+        first_bg = None
+        if loaded_imgs:
+            p = f"{tmpdir}/intro_bg.png"
+            loaded_imgs[0].save(p, quality=95)
+            first_bg = p
+        intro_img = _make_slide(first_bg or intro_bg_path, W, H, (15, 15, 35))
         d = ImageDraw.Draw(intro_img)
-        tf = get_font(60, bold=True)
-        lines = wrap_text(strip_emoji(book_title), tf, W - 120, d)[:4]
-        y = (H - len(lines) * 76) // 2
-        for line in lines:
+        tf = get_font(56, bold=True)
+        title_lines = wrap_text(strip_emoji(book_title), tf, W - 120, d)[:3]
+        persona_lines = []
+        if persona_name:
+            sf = get_font(36)
+            persona_lines = wrap_text(strip_emoji(persona_name), sf, W - 120, d)[:2]
+        total_h = len(title_lines) * 72 + (len(persona_lines) * 48 + 16 if persona_lines else 0)
+        y = (H - total_h) // 2
+        for line in title_lines:
             bbox = d.textbbox((0, 0), line, font=tf)
             d.text(((W - bbox[2] + bbox[0]) // 2, y), line, fill=(255, 255, 255), font=tf)
-            y += 76
+            y += 72
+        if persona_lines:
+            sf = get_font(36)
+            y += 16
+            for line in persona_lines:
+                bbox = d.textbbox((0, 0), line, font=sf)
+                d.text(((W - bbox[2] + bbox[0]) // 2, y), line, fill=(255, 220, 100), font=sf)
+                y += 48
         if logo_img:
             intro_img = paste_logo(intro_img, logo_img, logo_position)
         raw = intro_img.convert("RGB").tobytes()
@@ -406,7 +423,12 @@ def _render_pil_pipeline(
 
     # Outro
     if outro_frames > 0:
-        outro_img = _make_slide(outro_bg_path, W, H, (233, 69, 96))
+        last_bg = None
+        if loaded_imgs:
+            p = f"{tmpdir}/outro_bg.png"
+            loaded_imgs[-1].save(p, quality=95)
+            last_bg = p
+        outro_img = _make_slide(last_bg or outro_bg_path, W, H, (233, 69, 96))
         d = ImageDraw.Draw(outro_img)
         tf = get_font(48, bold=True)
         lines = wrap_text(strip_emoji(cta), tf, W - 120, d)[:4]

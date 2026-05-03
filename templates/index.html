@@ -1765,8 +1765,9 @@ async function batchStep3() {
 
     // Show videos with publish buttons
     var html = '<h3 style="margin-bottom:12px">📋 Bước 3: Video & Đăng bài</h3>';
-    // Store review data for publish buttons
+    // Store review data and video URLs for publish buttons
     window._batchReviews = videoResults.map(function(v) { return v.review.data; });
+    window._batchVideos = videoResults.map(function(v) { return { url: v.video_url, platform: v.platform }; });
 
     var lastReviewIdx = -1;
     videoResults.forEach(function(v, vi) {
@@ -1785,7 +1786,7 @@ async function batchStep3() {
             html += '<div style="display:inline-block;margin:6px 8px 6px 0;vertical-align:top">';
             html += '<video controls style="max-width:180px;border-radius:8px"><source src="' + v.video_url + '" type="video/mp4"></video>';
             html += '<br><a href="' + v.video_url + '" download class="btn" style="font-size:.75em;padding:4px 10px;margin-top:4px;display:inline-block">⬇️ ' + label + '</a>';
-            html += ' <button class="btn" onclick="batchPublish(' + vi + ',\'' + v.video_url + '\',\'' + v.platform + '\',this)" style="font-size:.75em;padding:4px 10px;margin-top:4px;background:' + (v.platform==='tiktok'?'#000':'#1877f2') + '">📤 Đăng</button>';
+            html += ' <button class="btn" onclick="batchPublish(' + vi + ',this)" style="font-size:.75em;padding:4px 10px;margin-top:4px;background:' + (v.platform==='tiktok'?'#000':'#1877f2') + '">📤 Đăng</button>';
             html += '<span class="bp-status" style="font-size:.8em;display:block;margin-top:2px"></span>';
             html += '</div>';
         }
@@ -1795,9 +1796,12 @@ async function batchStep3() {
     results.innerHTML = html;
     progress.innerHTML = '<div style="font-size:.9em;color:green">✅ Hoàn thành! Xem video và đăng bài bên dưới.</div>';
     document.getElementById('btn-batch-review').disabled = false;
-async function batchPublish(vi, videoUrl, platform, btn) {
+async function batchPublish(vi, btn) {
     var reviewData = window._batchReviews[vi];
-    if (!reviewData) { alert('Review data not found'); return; }
+    var videoInfo = window._batchVideos[vi];
+    if (!reviewData || !videoInfo) { alert('Dữ liệu không tìm thấy'); return; }
+    var platform = videoInfo.platform;
+    var videoUrl = videoInfo.url;
     var status = btn.parentElement.querySelector('.bp-status');
     var label = {tiktok:'TikTok',facebook:'Facebook Reels',youtube:'YouTube Shorts'}[platform] || platform;
     btn.disabled = true;
