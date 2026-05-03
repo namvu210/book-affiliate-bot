@@ -7,7 +7,7 @@ from google import genai
 from google.genai import types
 from PIL import Image
 
-from config import GEMINI_API_KEY, output_path, output_url
+from config import GEMINI_API_KEY, log, output_path, output_url
 
 EDIT_MODEL = "gemini-2.5-flash-image"
 SCENE_MODEL = "gemini-2.5-flash-lite"
@@ -101,7 +101,7 @@ def generate_scene_descriptions(product_title: str, persona: dict, num_scenes: i
 
     try:
         client = genai.Client(api_key=GEMINI_API_KEY)
-        print(f"[imagegen] Generating {num_scenes} scene descriptions...")
+        log.info(f"Generating {num_scenes} scene descriptions...")
         resp = client.models.generate_content(
             model=SCENE_MODEL,
             contents=contents,
@@ -117,12 +117,12 @@ def generate_scene_descriptions(product_title: str, persona: dict, num_scenes: i
         if isinstance(result, dict):
             desc = result.get("product_description", "")
             scenes = [s for s in result.get("scenes", []) if isinstance(s, str)][:num_scenes]
-            print(f"[imagegen] Product desc: {desc[:80]}...")
+            log.info(f"Product desc: {desc[:80]}...")
             return desc, scenes
         elif isinstance(result, list):
             return "", [s for s in result if isinstance(s, str)][:num_scenes]
     except Exception as e:
-        print(f"[imagegen] Scene description failed: {e}")
+        log.warning(f"Scene description failed: {e}")
     return "", []
 
 
@@ -151,7 +151,7 @@ def _detect_end_user(product_title: str, persona_name: str) -> dict:
         import json
         return json.loads(resp.text.strip())
     except Exception as e:
-        print(f"[imagegen] Role detection failed: {e}")
+        log.warning(f"Role detection failed: {e}")
         return {"same_person": True, "end_user": persona_name}
 
 
@@ -173,7 +173,7 @@ async def generate_lifestyle_images(
     roles = _detect_end_user(product_title, persona_name)
     use_kol = roles.get("same_person", True)
     end_user_desc = roles.get("end_user", persona_name)
-    print(f"[imagegen] Roles: same_person={use_kol}, end_user={end_user_desc}")
+    log.info(f"Roles: same_person={use_kol}, end_user={end_user_desc}")
 
     product_desc, scenes = generate_scene_descriptions(product_title, persona, num, product_images)
     if not scenes:
@@ -185,14 +185,14 @@ async def generate_lifestyle_images(
     if kol_path and use_kol:
         try:
             kol_img = Image.open(kol_path)
-            print(f"[imagegen] KOL photo loaded: {kol_path}")
+            log.info(f"KOL photo loaded: {kol_path}")
         except Exception:
-            print(f"[imagegen] KOL photo failed to load")
+            log.warning(f"KOL photo failed to load")
     else:
-        print(f"[imagegen] KOL not used (use_kol={use_kol}, kol_path={'set' if kol_path else 'none'})")
+        log.info(f"KOL not used (use_kol={use_kol}, kol_path={'set' if kol_path else 'none'})")
 
     if not product_desc and not scenes:
-        print(f"[imagegen] No product description or scenes generated")
+        log.warning(f"No product description or scenes generated")
         return []
 
     client = genai.Client(api_key=GEMINI_API_KEY)
@@ -248,7 +248,7 @@ async def generate_lifestyle_images(
                 f"Background details (shop signs, menus, posters) must use real, readable text."
             )
 
-            print(f"[imagegen] Editing image {i+1}/{len(scenes)}...")
+            log.info(f"Editing image {i+1}/{len(scenes)}...")
             result = client.models.generate_content(
                 model=EDIT_MODEL,
                 contents=contents,
@@ -260,8 +260,8 @@ async def generate_lifestyle_images(
                     img_path = img_dir / f"ai_{i}.png"
                     img_path.write_bytes(part.inline_data.data)
                     paths.append(f"{output_url(ts, 'ai_images')}/ai_{i}.png")
-                    print(f"[imagegen] Generated image {i+1}/{len(scenes)} ({len(part.inline_data.data)} bytes)")
+                    log.info(f"Generated image {i+1}/{len(scenes)} ({len(part.inline_data.data)} bytes)")
                     break
         except Exception as e:
-            print(f"[imagegen] Image {i+1} failed: {type(e).__name__}: {e}")
+            log.warning(f"Image {i+1} failed: {type(e).__name__}: {e}")
     return paths

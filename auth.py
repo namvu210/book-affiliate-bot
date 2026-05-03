@@ -1,3 +1,4 @@
+import logging; _log = logging.getLogger("auth")
 """OAuth token management for social platforms."""
 
 import json
@@ -104,7 +105,7 @@ async def tiktok_exchange_code(code: str) -> dict:
     tokens = _load_tokens()
     code_verifier = tokens.pop("_tiktok_pkce", "")
     _save_tokens(tokens)
-    print(f"[tiktok] Exchange: key={client_key}, redirect={redirect}, verifier={'yes' if code_verifier else 'MISSING'}, code={code[:20]}...")
+    _log.info(f"Exchange: key={client_key}, redirect={redirect}, verifier={'yes' if code_verifier else 'MISSING'}, code={code[:20]}...")
     async with httpx.AsyncClient() as client:
         resp = await client.post("https://open.tiktokapis.com/v2/oauth/token/", data={
             "client_key": client_key,
@@ -115,14 +116,25 @@ async def tiktok_exchange_code(code: str) -> dict:
             "code_verifier": code_verifier,
         })
         data = resp.json()
-        print(f"[tiktok] Token response: {data}")
+        _log.info(f"Token response: {data}")
         if "access_token" in data:
+            # Fetch user info
+            display_name = "TikTok User"
+            try:
+                user_resp = await client.get(
+                    "https://open.tiktokapis.com/v2/user/info/?fields=display_name",
+                    headers={"Authorization": f"Bearer {data['access_token']}"},
+                )
+                udata = user_resp.json()
+                display_name = udata.get("data", {}).get("user", {}).get("display_name", display_name)
+            except Exception:
+                pass
             return {
                 "access_token": data["access_token"],
                 "refresh_token": data.get("refresh_token", ""),
                 "expires_at": time.time() + data.get("expires_in", 86400),
                 "open_id": data.get("open_id", ""),
-                "display_name": "TikTok User",
+                "display_name": display_name,
             }
     return {}
 
@@ -241,5 +253,5 @@ def _refresh_token(platform: str, token_data: dict) -> dict | None:
             if "access_token" in d:
                 return {"access_token": d["access_token"], "expires_at": time.time() + d.get("expires_in", 3600)}
     except Exception as e:
-        print(f"[auth] Refresh failed for {platform}: {e}")
+        _log.warning(f"Refresh failed for {platform}: {e}")
     return None

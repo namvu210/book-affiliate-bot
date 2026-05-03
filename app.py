@@ -1,7 +1,8 @@
 """Product Affiliate Bot — Extract, Review, Voice & Video."""
 
 import json
-import os
+import logging, os
+_log = logging.getLogger("app")
 import subprocess
 from pathlib import Path
 
@@ -303,9 +304,17 @@ async def publish_content(
 ):
     """Publish video + caption to social platforms."""
     from poster import publish, build_post_request
-    data = json.loads(review_json)
-    platform_list = [p.strip() for p in platforms.split(",") if p.strip()]
-    req = build_post_request(data, video_url, platform_list[0] if platform_list else "facebook")
+    try:
+        data = json.loads(review_json)
+    except json.JSONDecodeError:
+        raise HTTPException(400, "Invalid review JSON")
+    if not isinstance(data, dict):
+        raise HTTPException(400, "review_json must be a JSON object")
+    valid_platforms = {"facebook", "tiktok", "youtube"}
+    platform_list = [p.strip() for p in platforms.split(",") if p.strip() in valid_platforms]
+    if not platform_list:
+        raise HTTPException(400, f"No valid platform. Choose from: {', '.join(valid_platforms)}")
+    req = build_post_request(data, video_url, platform_list[0])
     req.platforms = platform_list
     results = await publish(req)
     return {"results": [{"platform": r.platform, "success": r.success, "message": r.message, "post_id": r.post_id} for r in results]}
@@ -497,19 +506,19 @@ async def regenerate_image(
         )
         candidates = result.candidates or []
         if not candidates:
-            print(f"[regen] No candidates returned. Prompt filter: {getattr(result, 'prompt_feedback', 'none')}")
+            _log.warning(f"regen: No candidates returned. Prompt filter: {getattr(result, 'prompt_feedback', 'none')}")
             raise HTTPException(500, "Gemini blocked or returned no image — try a different product")
         for part in (candidates[0].content.parts if candidates[0].content else []):
             if part.inline_data:
                 img_path = output_path(ts, "regen.png")
                 Path(str(img_path)).write_bytes(part.inline_data.data)
                 return {"image_url": output_url(ts, "regen.png")}
-        print(f"[regen] Candidates returned but no image data. Finish reason: {getattr(candidates[0], 'finish_reason', 'unknown')}")
+        _log.warning(f"regen: Candidates returned but no image data. Finish reason: {getattr(candidates[0], 'finish_reason', 'unknown')}")
         raise HTTPException(500, "Gemini returned no image — try again")
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[regen] Error: {type(e).__name__}: {e}")
+        _log.warning(f"regen: Error: {type(e).__name__}: {e}")
         raise HTTPException(500, str(e))
     raise HTTPException(500, "No image generated")
 

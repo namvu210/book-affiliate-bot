@@ -1,7 +1,11 @@
+import logging
 import os
 import re
 from datetime import datetime
 from pathlib import Path
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s: %(message)s", datefmt="%H:%M:%S")
+log = logging.getLogger("bot")
 
 # Google Gemini config
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")

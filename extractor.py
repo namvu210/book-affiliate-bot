@@ -1,3 +1,4 @@
+import logging; _log = logging.getLogger("extractor")
 """Extract product info from PDF files or Shopee product links."""
 
 import json
@@ -87,7 +88,7 @@ async def extract_from_shopee(url: str) -> BookInfo:
                             source="shopee",
                         )
         except Exception as e:
-            print(f"[extractor] AffiPad product-info failed: {e}")
+            _log.warning(f" AffiPad product-info failed: {e}")
 
     return BookInfo(
         title=title or "Sản phẩm từ Shopee",

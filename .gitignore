@@ -10,5 +10,6 @@ voices/
 templates_video/
 tokens.json
 kol/
+music/
 
 *.pem

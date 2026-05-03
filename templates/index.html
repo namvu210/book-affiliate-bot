@@ -1227,7 +1227,7 @@ async function batchGenerate() {
     const btn = document.getElementById('btn-batch');
     const vr = document.getElementById('video-result');
     btn.disabled = true; btn.textContent = '⏳ Đang tạo 3 video...'; vr.innerHTML = '';
-    const configs = [['9:16','tiktok','TikTok'],['9:16','facebook','Reels'],['9:16','tiktok','YouTube Shorts'],['16:9','facebook','YouTube']];
+    const configs = [['9:16','tiktok','TikTok'],['9:16','facebook','Reels'],['9:16','tiktok','YouTube Shorts']];
     let html = '';
     for (const [aspect, plat, label] of configs) {
         try {
@@ -1236,9 +1236,13 @@ async function batchGenerate() {
             const resp = await fetch('/generate-video', { method: 'POST', body: fd });
             if (!resp.ok) throw new Error('Lỗi');
             const data = await resp.json();
+            const pubPlatform = label === 'Reels' ? 'facebook' : (label === 'TikTok' ? 'tiktok' : 'youtube');
+            const pubColors = {tiktok:'#000',facebook:'#1877f2',youtube:'#c00'};
             html += `<div style="display:inline-block;margin:8px;vertical-align:top">
                 <video controls style="max-width:220px;border-radius:8px"><source src="${data.video_url}" type="video/mp4"></video>
-                <br><a href="${data.video_url}" download class="btn" style="font-size:.8em;padding:6px 12px;margin-top:4px;display:inline-block">⬇️ ${label}</a></div>`;
+                <br><a href="${data.video_url}" download class="btn" style="font-size:.8em;padding:6px 12px;margin-top:4px;display:inline-block">⬇️ ${label}</a>
+                <button class="btn" onclick="publishVideo('${data.video_url}','${pubPlatform}')" style="font-size:.8em;padding:6px 12px;margin-top:4px;background:${pubColors[pubPlatform]}">📤 Đăng</button>
+                <span id="pub-status-${pubPlatform}" style="font-size:.8em;display:block;margin-top:4px"></span></div>`;
             vr.innerHTML = html + '<p style="font-size:.85em;color:#666">Đang tạo...</p>';
         } catch(e) { html += `<p style="color:red;font-size:.85em">❌ ${label}: ${e.message}</p>`; }
     }
@@ -1330,8 +1334,8 @@ function applyShopeeData(data) {
 // === Publish to Social Platforms ===
 async function publishVideo(videoUrl, platform) {
     platform = platform || 'facebook';
-    var label = platform === 'tiktok' ? 'TikTok' : 'Facebook Reels';
-    var status = document.getElementById('publish-status');
+    var label = {tiktok:'TikTok',facebook:'Facebook Reels',youtube:'YouTube Shorts'}[platform] || platform;
+    var status = document.getElementById('publish-status') || document.getElementById('pub-status-' + platform);
     if (!status) return;
     status.textContent = '⏳ Đang đăng ' + label + '...';
     try {
@@ -1344,7 +1348,10 @@ async function publishVideo(videoUrl, platform) {
         var results = data.results || [];
         var msg = results.map(function(r) {
             var s = (r.success ? '✅' : '❌') + ' ' + r.platform + ': ' + r.message;
-            if (r.post_id) s += ' <a href="https://www.facebook.com/' + r.post_id + '" target="_blank" style="color:#1877f2">Xem bài đăng →</a>';
+            if (r.post_id && r.success) {
+                var urls = {facebook:'https://www.facebook.com/'+r.post_id, youtube:'https://youtu.be/'+r.post_id};
+                if (urls[r.platform]) s += ' <a href="'+urls[r.platform]+'" target="_blank">Xem bài đăng →</a>';
+            }
             return s;
         }).join(' | ');
         status.innerHTML = msg;

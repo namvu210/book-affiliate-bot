@@ -4,7 +4,7 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from config import make_ts, output_path, output_url, OUTPUT_DIR, AFFIPAD_API_KEY, AFFIPAD_TOOL_ID, BITLY_API_KEY, SHORTIO_API_KEY, SHORTIO_DOMAIN
+from config import log, make_ts, output_path, output_url, OUTPUT_DIR, AFFIPAD_API_KEY, AFFIPAD_TOOL_ID, BITLY_API_KEY, SHORTIO_API_KEY, SHORTIO_DOMAIN
 from extractor import BookInfo, extract_from_shopee, download_images
 from reviewer import generate_review_all_platforms, generate_json
 from tts import generate_audio
@@ -46,7 +46,7 @@ async def _shorten_url(client, long_url: str) -> str:
             if r.status_code in (200, 201):
                 return r.json().get("shortURL", "")
         except Exception as e:
-            print(f"[shortio] Failed: {e}")
+            log.warning(f"shortio: Failed: {e}")
     # Try Bitly
     if BITLY_API_KEY:
         try:
@@ -56,13 +56,13 @@ async def _shorten_url(client, long_url: str) -> str:
             if r.status_code in (200, 201):
                 return r.json().get("link", "")
         except Exception as e:
-            print(f"[bitly] Failed: {e}")
+            log.warning(f"bitly: Failed: {e}")
     return ""
 
 
 async def convert_to_affiliate_link(product_url: str) -> str:
     """Convert a Shopee product URL to a short affiliate link via AffiPad + TinyURL."""
-    print(f"[affipad] API_KEY: {'set' if AFFIPAD_API_KEY else 'MISSING'}, TOOL_ID: {'set' if AFFIPAD_TOOL_ID else 'MISSING'}")
+    log.info(f"affipad: API_KEY: {'set' if AFFIPAD_API_KEY else 'MISSING'}, TOOL_ID: {'set' if AFFIPAD_TOOL_ID else 'MISSING'}")
     if not AFFIPAD_API_KEY or not AFFIPAD_TOOL_ID:
         return ""
     try:
@@ -92,7 +92,7 @@ async def convert_to_affiliate_link(product_url: str) -> str:
                     return short
             return long_link
     except Exception as e:
-        print(f"[affipad] Failed: {e}")
+        log.warning(f"affipad:: {e}")
     return ""
 
 
@@ -110,45 +110,47 @@ async def process_product(inp: PipelineInput) -> PipelineResult:
             "shopee_url": book.shopee_url, "source": book.source,
         }
     except Exception as e:
-        print(f"[pipeline] Extract failed: {e}")
+        log.error(f"Extract failed: {e}")
         return PipelineResult(ts=ts, review_data=result, error=f"Extract failed: {e}")
 
     # Step 2: Affiliate link (non-blocking)
     try:
         if inp.affiliate_url:
             book.shopee_url = inp.affiliate_url
+            result["book"]["shopee_url"] = inp.affiliate_url
         else:
             aff_link = await convert_to_affiliate_link(inp.url)
             if aff_link:
                 book.shopee_url = aff_link
                 result["book"]["shopee_url"] = aff_link
     except Exception as e:
-        print(f"[pipeline] Affiliate failed (continuing): {e}")
+        log.warning(f"Affiliate failed (continuing): {e}")
 
     # Step 3: Generate reviews — each platform independent
     for platform, wc in [("facebook", min(inp.word_count_fb, 300)), ("tiktok", min(inp.word_count_tk, 150))]:
         try:
+            import asyncio
             from reviewer import generate_review
-            review = generate_review(book, inp.audience, platform, inp.custom_audience, wc)
+            review = await asyncio.to_thread(generate_review, book, inp.audience, platform, inp.custom_audience, wc)
             result[platform] = review
-            print(f"[pipeline] {platform} review generated")
+            log.info(f"{platform} review generated")
         except Exception as e:
             result[platform] = {"social_post": "", "review": f"Error: {e}", "hashtags": [], "hook": "", "key_points": [], "cta": ""}
-            print(f"[pipeline] {platform} review failed (continuing): {e}")
+            log.warning(f"{platform} review failed (continuing): {e}")
 
     # Step 4: Audio — each platform independent
     try:
         result = await _add_audio(result, ts, inp.voice_type, inp.elevenlabs_voice_id)
-        print(f"[pipeline] Audio generated")
+        log.info(f"Audio generated")
     except Exception as e:
-        print(f"[pipeline] Audio failed (continuing): {e}")
+        log.warning(f"Audio failed (continuing): {e}")
 
     # Step 5: Resolve images (non-blocking)
     try:
         images = await _resolve_images(inp.image_urls, book, ts)
-        print(f"[pipeline] Images resolved: {len(images)}")
+        log.info(f"Images resolved: {len(images)}")
     except Exception as e:
-        print(f"[pipeline] Image resolve failed (continuing): {e}")
+        log.warning(f"Image resolve failed (continuing): {e}")
 
     # Step 6: AI images (non-blocking, separate from review)
     try:
@@ -158,9 +160,9 @@ async def process_product(inp: PipelineInput) -> PipelineResult:
             num_ai = min(MAX_AI_IMAGES, 9 - len(images))
             ai_images = await generate_lifestyle_images(book.title, persona, num_ai, ts, images[:3] if images else [])
             images.extend(ai_images)
-            print(f"[pipeline] AI images: {len(ai_images)} generated")
+            log.info(f"AI images: {len(ai_images)} generated")
     except Exception as e:
-        print(f"[pipeline] AI image gen failed (continuing): {e}")
+        log.warning(f"AI image gen failed (continuing): {e}")
 
     # Shuffle: 1 AI image first, 1 AI image last, rest randomized in middle
     import random
@@ -245,7 +247,7 @@ CHỈ trả về JSON array, không giải thích."""
         result = generate_json(prompt, max_tokens=500, model=PERSONA_MODEL)
         return result if isinstance(result, list) else []
     except Exception as e:
-        print(f"[persona-suggest] Failed for '{title[:40]}': {e}")
+        log.warning(f"persona-suggest: Failed for '{title[:40]}': {e}")
         return []
 
 
@@ -260,13 +262,14 @@ class BatchPersonaResult:
 
 async def batch_with_personas(urls: list[str], voice_type: str = "elevenlabs", voice_id: str = "", word_count: int = 150) -> list[BatchPersonaResult]:
     """For each URL: suggest 2 personas, then generate a review for each persona."""
+    import asyncio
     results = []
     for url in urls:
         try:
             book = await extract_from_shopee(url)
             title = book.title or url.split("-i.")[0].split("shopee.vn/")[-1].replace("-", " ")
 
-            personas = suggest_personas_for_product(title)
+            personas = await asyncio.to_thread(suggest_personas_for_product, title)
             if not personas:
                 personas = [{"name": "Khách hàng phổ thông", "tone": "thân thiện", "focus": "chất lượng sản phẩm"}]
 
@@ -289,20 +292,20 @@ def _get_default_music(product_title: str = "", persona_name: str = "") -> str |
     music_dir = Path(__file__).parent / "music"
     music_dir.mkdir(exist_ok=True)
 
-    # Pick genre via LLM
+    # Pick genre by keyword matching
     genre = "lofi"
     if product_title:
-        try:
-            result = generate_json(
-                f'Pick the best background music genre for a TikTok product review video.\n'
-                f'Product: {product_title}\nTarget customer: {persona_name}\n'
-                f'Options: lofi, acoustic, corporate, cinematic, happy, jazz, ambient, piano\n'
-                f'Return JSON: {{"genre": "chosen_genre"}}',
-                max_tokens=50, model=PERSONA_MODEL,
-            )
-            genre = result.get("genre", "lofi") if isinstance(result, dict) else "lofi"
-        except Exception:
-            pass
+        t = product_title.lower()
+        if any(w in t for w in ["trẻ em", "bé", "mầm non", "thiếu nhi", "đồ chơi"]):
+            genre = "happy"
+        elif any(w in t for w in ["sách", "book", "học", "giáo dục"]):
+            genre = "acoustic"
+        elif any(w in t for w in ["thời trang", "áo", "quần", "váy", "giày"]):
+            genre = "lofi"
+        elif any(w in t for w in ["công nghệ", "laptop", "điện thoại", "tai nghe"]):
+            genre = "corporate"
+        elif any(w in t for w in ["mỹ phẩm", "skincare", "serum", "kem"]):
+            genre = "piano"
 
     # Check cache for this genre
     cached = list(music_dir.glob(f"{genre}_*.mp3"))

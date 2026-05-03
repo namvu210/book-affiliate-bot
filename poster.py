@@ -7,7 +7,7 @@ from pathlib import Path
 import httpx
 
 from auth import get_access_token
-from config import OUTPUT_DIR
+from config import OUTPUT_DIR, log
 
 
 @dataclass
@@ -68,7 +68,7 @@ async def _post_facebook_reel(req: PostRequest) -> PostResult:
     if req.hashtags:
         caption += "\n\n" + " ".join(f"#{h.lstrip('#')}" for h in req.hashtags)
 
-    print(f"[facebook] Caption length: {len(caption)}, hashtags: {len(req.hashtags)}, affiliate: {'yes' if req.affiliate_link else 'no'}")
+    log.info(f"facebook: Caption length: {len(caption)}, hashtags: {len(req.hashtags)}, affiliate: {'yes' if req.affiliate_link else 'no'}")
 
     try:
         async with httpx.AsyncClient(timeout=120) as client:
@@ -124,7 +124,7 @@ async def _post_facebook_reel(req: PostRequest) -> PostResult:
                             data={"message": f"🛒 Mua ngay tại đây: {req.affiliate_link}"},
                         )
                     except Exception as e:
-                        print(f"[facebook] Comment failed: {e}")
+                        log.warning(f"facebook: Comment failed: {e}")
                 return PostResult(platform="facebook", success=True, message="✅ Đã đăng Reel!", post_id=str(post_id))
             else:
                 return PostResult(platform="facebook", success=False, message=f"Publish failed: {pub_data.get('error', {}).get('message', str(pub_data))}")
@@ -210,12 +210,18 @@ async def _post_tiktok(req: PostRequest) -> PostResult:
                 status = status_data.get("data", {}).get("status")
 
                 if status == "PUBLISH_COMPLETE":
-                    return PostResult(platform="tiktok", success=True, message="✅ Video đã upload lên TikTok (draft)! Mở TikTok app để xác nhận đăng.", post_id=publish_id)
+                    msg = "✅ Video đã upload lên TikTok (draft)! Mở TikTok app để xác nhận đăng."
+                    if req.affiliate_link:
+                        msg += f" Nhớ thêm link affiliate vào comment: {req.affiliate_link}"
+                    return PostResult(platform="tiktok", success=True, message=msg, post_id=publish_id)
                 elif status == "FAILED":
                     reason = status_data.get("data", {}).get("fail_reason", "unknown")
                     return PostResult(platform="tiktok", success=False, message=f"Upload failed: {reason}")
 
-            return PostResult(platform="tiktok", success=True, message="✅ Video đang xử lý trên TikTok. Mở TikTok app để kiểm tra.", post_id=publish_id)
+            msg = "✅ Video đang xử lý trên TikTok. Mở TikTok app để kiểm tra."
+            if req.affiliate_link:
+                msg += f" Nhớ thêm link affiliate vào comment: {req.affiliate_link}"
+            return PostResult(platform="tiktok", success=True, message=msg, post_id=publish_id)
 
     except Exception as e:
         return PostResult(platform="tiktok", success=False, message=str(e))
@@ -291,6 +297,18 @@ async def _post_youtube(req: PostRequest) -> PostResult:
 
             video_data = upload_resp.json()
             video_id = video_data.get("id", "")
+
+            # Auto-comment with affiliate link
+            if req.affiliate_link and video_id:
+                try:
+                    await client.post(
+                        "https://www.googleapis.com/youtube/v3/commentThreads?part=snippet",
+                        headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"},
+                        json={"snippet": {"videoId": video_id, "topLevelComment": {"snippet": {"textOriginal": f"🛒 Mua ngay tại đây: {req.affiliate_link}"}}}},
+                    )
+                except Exception as e:
+                    log.warning(f"youtube: Comment failed: {e}")
+
             return PostResult(
                 platform="youtube",
                 success=True,
@@ -323,6 +341,6 @@ def build_post_request(review_data: dict, video_url: str, platform_key: str = "t
         caption=platform_data.get("social_post", ""),
         hashtags=platform_data.get("hashtags", []),
         title=book.get("title", ""),
-        affiliate_link=review_data.get("affiliate_link", ""),
+        affiliate_link=review_data.get("affiliate_link", "") or book.get("shopee_url", ""),
         thumbnail_path=thumbnail,
     )
