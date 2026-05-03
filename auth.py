@@ -94,15 +94,6 @@ def tiktok_auth_url(server_origin: str = "") -> str:
         f"&code_challenge_method=S256"
         f"&state={state}"
     )
-    return (
-        f"https://www.tiktok.com/v2/auth/authorize/"
-        f"?client_key={client_key}"
-        f"&scope=video.upload,user.info.basic"
-        f"&response_type=code"
-        f"&redirect_uri={redirect}"
-        f"&code_challenge={code_challenge}"
-        f"&code_challenge_method=S256"
-    )
 
 
 async def tiktok_exchange_code(code: str) -> dict:
@@ -113,6 +104,7 @@ async def tiktok_exchange_code(code: str) -> dict:
     tokens = _load_tokens()
     code_verifier = tokens.pop("_tiktok_pkce", "")
     _save_tokens(tokens)
+    print(f"[tiktok] Exchange: key={client_key}, redirect={redirect}, verifier={'yes' if code_verifier else 'MISSING'}, code={code[:20]}...")
     async with httpx.AsyncClient() as client:
         resp = await client.post("https://open.tiktokapis.com/v2/oauth/token/", data={
             "client_key": client_key,
@@ -123,6 +115,7 @@ async def tiktok_exchange_code(code: str) -> dict:
             "code_verifier": code_verifier,
         })
         data = resp.json()
+        print(f"[tiktok] Token response: {data}")
         if "access_token" in data:
             return {
                 "access_token": data["access_token"],

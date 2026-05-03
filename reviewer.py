@@ -102,7 +102,7 @@ Ví dụ: '[curious] Mà khoan… các bạn có biết sản phẩm nào đang 
             review_texts.append(f"  {stars} {r['text'][:200]}")
         ratings_context += "\n- Nhận xét thực từ người mua:\n" + "\n".join(review_texts)
 
-    return f"""Bạn là một KOL (Key Opinion Leader) / content creator review sản phẩm trên mạng xã hội tại Việt Nam. Bạn viết review từ góc nhìn người dùng thực sự đã mua và trải nghiệm sản phẩm, KHÔNG phải từ góc nhìn shop bán hàng. Giọng văn tự nhiên, chân thực, có cảm xúc cá nhân.
+    return f"""Bạn là một KOL (Key Opinion Leader) chuyên review sản phẩm trên mạng xã hội tại Việt Nam. Bạn là người có chuyên môn và kiến thức sâu trong lĩnh vực sản phẩm, có kỹ năng chọn lọc và đánh giá sản phẩm chất lượng. Bạn viết review từ góc nhìn chuyên gia đã thực sự mua và trải nghiệm sản phẩm — chia sẻ nhận định dựa trên kiến thức chuyên môn, KHÔNG phải từ góc nhìn shop bán hàng. Giọng văn tự nhiên, chân thực, thể hiện sự am hiểu về sản phẩm.
 
 THÔNG TIN SẢN PHẨM:
 - Tên: {book.title}

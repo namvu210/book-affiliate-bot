@@ -222,8 +222,84 @@ async def _post_tiktok(req: PostRequest) -> PostResult:
 
 
 async def _post_youtube(req: PostRequest) -> PostResult:
-    """Post to YouTube (placeholder)."""
-    return PostResult(platform="youtube", success=False, message="YouTube posting chưa sẵn sàng")
+    """Post to YouTube Shorts via resumable upload."""
+    from auth import get_access_token
+
+    access_token = get_access_token("youtube")
+    if not access_token:
+        return PostResult(platform="youtube", success=False, message="YouTube chưa kết nối. Vào ⚙️ API Keys → kết nối YouTube.")
+
+    video_path = req.video_path
+    if not Path(video_path).exists() and "/output/" in video_path:
+        video_path = str(Path(OUTPUT_DIR) / video_path.split("/output/")[-1])
+    if not Path(video_path).exists():
+        return PostResult(platform="youtube", success=False, message=f"Video không tồn tại: {video_path}")
+
+    title = req.title[:100] if req.title else "Product Review"
+    description = req.caption or ""
+    if req.hashtags:
+        description += "\n\n" + " ".join(f"#{h.lstrip('#')}" for h in req.hashtags)
+    if req.affiliate_link:
+        description += f"\n\n🛒 {req.affiliate_link}"
+    # Add #Shorts to signal YouTube this is a Short
+    description += "\n\n#Shorts"
+
+    try:
+        async with httpx.AsyncClient(timeout=120) as client:
+            # Step 1: Initiate resumable upload
+            init_resp = await client.post(
+                "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "snippet": {
+                        "title": title,
+                        "description": description,
+                        "categoryId": "22",  # People & Blogs
+                    },
+                    "status": {
+                        "privacyStatus": "private",  # Upload as private, user can change later
+                        "selfDeclaredMadeForKids": False,
+                    },
+                },
+            )
+
+            if init_resp.status_code != 200:
+                err = init_resp.json().get("error", {}).get("message", init_resp.text[:200])
+                return PostResult(platform="youtube", success=False, message=f"Init failed: {err}")
+
+            upload_url = init_resp.headers.get("location")
+            if not upload_url:
+                return PostResult(platform="youtube", success=False, message="No upload URL returned")
+
+            # Step 2: Upload video binary
+            file_size = Path(video_path).stat().st_size
+            with open(video_path, "rb") as f:
+                upload_resp = await client.put(
+                    upload_url,
+                    headers={
+                        "Content-Type": "video/mp4",
+                        "Content-Length": str(file_size),
+                    },
+                    content=f.read(),
+                )
+
+            if upload_resp.status_code not in (200, 201):
+                return PostResult(platform="youtube", success=False, message=f"Upload failed: HTTP {upload_resp.status_code}")
+
+            video_data = upload_resp.json()
+            video_id = video_data.get("id", "")
+            return PostResult(
+                platform="youtube",
+                success=True,
+                message=f"✅ Đã upload YouTube (private)! Mở YouTube Studio để publish.",
+                post_id=video_id,
+            )
+
+    except Exception as e:
+        return PostResult(platform="youtube", success=False, message=str(e))
 
 
 def build_post_request(review_data: dict, video_url: str, platform_key: str = "tiktok") -> PostRequest:
