@@ -1808,6 +1808,8 @@ async function batchStep3() {
     results.innerHTML = html;
     progress.innerHTML = '<div style="font-size:.9em;color:green">✅ Hoàn thành! Xem video và đăng bài bên dưới.</div>';
     document.getElementById('btn-batch-review').disabled = false;
+}
+
 async function batchPublish(vi, btn) {
     var reviewData = window._batchReviews[vi];
     var videoInfo = window._batchVideos[vi];
