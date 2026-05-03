@@ -262,6 +262,7 @@ async def from_url(
     affiliate_url: str = Form(""),
     word_count_fb: int = Form(200),
     word_count_tk: int = Form(150),
+    platforms: str = Form("facebook,tiktok"),
     bookmarklet_images: str = Form("[]"),
     media: list[UploadFile] = File(default=[]),
 ):
@@ -283,12 +284,14 @@ async def from_url(
             save_to.write_bytes(await f.read())
             uploaded_paths.append(f"{output_url(ts_upload, 'images')}/product_{i}{ext}")
 
+    platform_list = [p.strip() for p in platforms.split(",") if p.strip()]
     from pipeline import PipelineInput, process_product
     inp = PipelineInput(
         url=url, audience=audience, custom_audience=ca,
         affiliate_url=affiliate_url,
         word_count_fb=word_count_fb, word_count_tk=word_count_tk,
         image_urls=uploaded_paths or bm_imgs,
+        platforms=platform_list,
     )
     result = await process_product(inp)
     if result.error:

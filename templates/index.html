@@ -240,6 +240,12 @@
         </div>
         <div id="product-cards"></div>
         <div style="display:flex;gap:12px;margin-top:12px;align-items:center;flex-wrap:wrap">
+            <label style="font-size:.85em">Nền tảng:</label>
+            <label style="font-size:.85em"><input type="checkbox" id="batch-plat-facebook" checked> 📘 Facebook Reels</label>
+            <label style="font-size:.85em"><input type="checkbox" id="batch-plat-tiktok"> 🎵 TikTok</label>
+            <label style="font-size:.85em"><input type="checkbox" id="batch-plat-youtube"> ▶️ YouTube</label>
+        </div>
+        <div style="display:flex;gap:12px;margin-top:8px;align-items:center;flex-wrap:wrap">
             <label style="font-size:.85em">Đối tượng:
                 <select id="batch-audience" onchange="document.getElementById('batch-custom-persona').style.display=this.value==='custom'?'block':'none'" style="padding:6px 10px;border-radius:6px;border:1.5px solid #ddd;font-size:.85em">
                     <option value="auto" selected>🤖 Tự động (2 personas/SP)</option>
@@ -1590,6 +1596,11 @@ var _batchState = { products: [], currentIdx: 0, results: [] };
 async function startBatchReview() {
     var products = getProductCards();
     if (products.length === 0) { alert('Thêm ít nhất 1 sản phẩm!'); return; }
+    var selectedPlatforms = [];
+    if (document.getElementById('batch-plat-facebook').checked) selectedPlatforms.push('facebook');
+    if (document.getElementById('batch-plat-tiktok').checked) selectedPlatforms.push('tiktok');
+    if (document.getElementById('batch-plat-youtube').checked) selectedPlatforms.push('youtube');
+    if (selectedPlatforms.length === 0) { alert('Chọn ít nhất 1 nền tảng!'); return; }
     var btn = document.getElementById('btn-batch-review');
     var progress = document.getElementById('batch-progress');
     var results = document.getElementById('batch-results');
@@ -1607,7 +1618,7 @@ async function startBatchReview() {
     }
     btn.disabled = true;
     results.innerHTML = '';
-    _batchState = { products: products, currentIdx: 0, results: [], voice: batchVoice, wordCount: wordCount, wordCountFb: wordCountFb, audience: audience, customAudience: customAudience };
+    _batchState = { products: products, currentIdx: 0, results: [], voice: batchVoice, wordCount: wordCount, wordCountFb: wordCountFb, audience: audience, customAudience: customAudience, platforms: selectedPlatforms };
     batchLog('Products: ' + products.length + ', Voice: ' + batchVoice.type + ', Audience: ' + audience);
 
     // Step 1: Suggest personas for all products
@@ -1678,6 +1689,7 @@ async function batchStep2() {
                 fd.append('custom_audience', JSON.stringify(persona));
                 fd.append('word_count_tk', _batchState.wordCount);
                 fd.append('word_count_fb', _batchState.wordCountFb);
+                fd.append('platforms', _batchState.platforms.join(','));
                 for (var k = 0; k < p.files.length; k++) fd.append('media', p.files[k]);
                 var resp = await fetch('/from-url', { method: 'POST', body: fd });
                 if (!resp.ok) throw new Error('Lỗi server');
@@ -1741,7 +1753,7 @@ async function batchStep3() {
         var r = reviews[i];
         progress.innerHTML = '<div style="font-size:.9em">⏳ Video ' + (i+1) + '/' + reviews.length + ' — ' + r.persona.name + '...</div>';
 
-        for (var platform of ['tiktok', 'facebook']) {
+        for (var platform of _batchState.platforms) {
             try {
                 var fd = new FormData();
                 fd.append('review_json', JSON.stringify(r.data));

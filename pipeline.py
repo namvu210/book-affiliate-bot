@@ -24,6 +24,7 @@ class PipelineInput:
     image_urls: list[str] = field(default_factory=list)
     voice_type: str = "elevenlabs"
     elevenlabs_voice_id: str = "T4jrQr9x0Y24833yKCWR"  # Thuý Hà V1
+    platforms: list[str] = field(default_factory=lambda: ["facebook", "tiktok"])
 
 
 @dataclass
@@ -128,6 +129,8 @@ async def process_product(inp: PipelineInput) -> PipelineResult:
 
     # Step 3: Generate reviews — each platform independent
     for platform, wc in [("facebook", min(inp.word_count_fb, 300)), ("tiktok", min(inp.word_count_tk, 150))]:
+        if platform not in inp.platforms:
+            continue
         try:
             import asyncio
             from reviewer import generate_review
