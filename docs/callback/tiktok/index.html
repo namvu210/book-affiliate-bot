@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>TikTok — Connecting...</title>
+<style>
+  body { font-family: system-ui, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f5f5f5; }
+  .card { background: #fff; border-radius: 12px; padding: 40px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); max-width: 400px; }
+  h2 { margin-bottom: 12px; }
+  .spinner { border: 3px solid #eee; border-top: 3px solid #25F4EE; border-radius: 50%; width: 32px; height: 32px; animation: spin 0.8s linear infinite; margin: 16px auto; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; margin: 8px 0; }
+  button { padding: 10px 24px; background: #000; color: #fff; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; }
+  button:hover { opacity: 0.85; }
+  .error { color: #c53030; }
+  .success { color: #1a7f4b; }
+  #manual { display: none; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div id="auto">
+    <h2>Connecting TikTok...</h2>
+    <div class="spinner"></div>
+    <p>Redirecting to your app server...</p>
+  </div>
+  <div id="manual">
+    <h2>Enter your server URL</h2>
+    <p style="font-size:13px;color:#666;margin-bottom:12px">Could not auto-redirect. Paste your ngrok or server URL below:</p>
+    <input type="text" id="serverUrl" placeholder="https://xxxx.ngrok-free.app" />
+    <br>
+    <button onclick="doRedirect()">Connect</button>
+    <p id="code" style="font-size:12px;color:#999;margin-top:12px"></p>
+  </div>
+  <div id="errMsg"></div>
+</div>
+<script>
+const params = new URLSearchParams(window.location.search);
+const code = params.get('code');
+const error = params.get('error');
+const state = params.get('state');  // server origin passed via OAuth state
+
+if (error) {
+  document.getElementById('auto').innerHTML = `<h2 class="error">❌ Authorization failed</h2><p>${error}: ${params.get('error_description') || params.get('error_type') || ''}</p>`;
+} else if (code) {
+  const server = state ? decodeURIComponent(state) : '';
+  if (server) {
+    window.location.href = server + '/callback/tiktok?code=' + encodeURIComponent(code);
+  } else {
+    // No state — show manual entry
+    document.getElementById('auto').style.display = 'none';
+    document.getElementById('manual').style.display = 'block';
+    document.getElementById('code').textContent = 'Auth code: ' + code.substring(0, 10) + '...';
+  }
+} else {
+  document.getElementById('auto').innerHTML = '<h2 class="error">❌ No authorization code received</h2>';
+}
+
+function doRedirect() {
+  const server = document.getElementById('serverUrl').value.replace(/\/+$/, '');
+  if (!server) return;
+  localStorage.setItem('book_bot_server', server);
+  window.location.href = server + '/callback/tiktok?code=' + encodeURIComponent(code);
+}
+</script>
+</body>
+</html>

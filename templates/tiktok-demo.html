@@ -130,21 +130,18 @@ async function uploadToTikTok() {
   const btn = document.getElementById('btnUpload');
   btn.disabled = true;
   btn.textContent = 'Uploading...';
-  showMsg('Uploading video to TikTok...', 'info');
+  showMsg('Saving video...', 'info');
 
   try {
-    const form = new FormData();
-    form.append('review_json', JSON.stringify({ tiktok: { social_post: '', hashtags: [] }, book: { title: file.name } }));
-    form.append('video_url', '');
-    form.append('platforms', 'tiktok');
-
-    // First save the file via a simple upload
+    // Step 1: Save file to server
     const uploadForm = new FormData();
     uploadForm.append('video', file);
-    const upResp = await fetch(`${API}/auto-cut-video`, { method: 'POST', body: uploadForm });
+    const upResp = await fetch(`${API}/upload-video`, { method: 'POST', body: uploadForm });
     const upData = await upResp.json();
+    if (!upData.video_url) throw new Error('File save failed');
 
-    // Now publish
+    // Step 2: Publish to TikTok
+    showMsg('Publishing to TikTok...', 'info');
     const pubForm = new FormData();
     pubForm.append('review_json', JSON.stringify({ tiktok: { social_post: '', hashtags: [] }, book: { title: file.name } }));
     pubForm.append('video_url', upData.video_url);

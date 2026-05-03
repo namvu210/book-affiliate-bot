@@ -311,6 +311,17 @@ async def publish_content(
     return {"results": [{"platform": r.platform, "success": r.success, "message": r.message, "post_id": r.post_id} for r in results]}
 
 
+@app.post("/upload-video")
+async def upload_video(video: UploadFile):
+    """Save an uploaded video file and return its path for publishing."""
+    from config import make_ts, OUTPUT_DIR
+    ts = make_ts()
+    dest = Path(OUTPUT_DIR) / f"{ts}_upload.mp4"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(await video.read())
+    return {"video_url": f"/output/{ts}_upload.mp4", "path": str(dest)}
+
+
 @app.post("/batch-personas")
 async def batch_personas(
     urls: str = Form(...),
@@ -520,15 +531,20 @@ async def platform_status():
 
 
 @app.get("/connect/{platform}")
-async def connect_platform(platform: str):
+async def connect_platform(platform: str, request: Request):
     """Redirect to OAuth login for a platform."""
     from auth import tiktok_auth_url, youtube_auth_url, facebook_auth_url
-    urls = {"tiktok": tiktok_auth_url, "youtube": youtube_auth_url, "facebook": facebook_auth_url}
-    fn = urls.get(platform)
-    if not fn:
-        raise HTTPException(400, f"Unknown platform: {platform}")
+    if platform == "tiktok":
+        origin = f"{request.url.scheme}://{request.url.netloc}"
+        url = tiktok_auth_url(server_origin=origin)
+    else:
+        urls = {"youtube": youtube_auth_url, "facebook": facebook_auth_url}
+        fn = urls.get(platform)
+        if not fn:
+            raise HTTPException(400, f"Unknown platform: {platform}")
+        url = fn()
     from fastapi.responses import RedirectResponse
-    return RedirectResponse(fn())
+    return RedirectResponse(url)
 
 
 @app.get("/callback/{platform}")

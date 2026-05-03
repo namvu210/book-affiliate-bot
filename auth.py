@@ -68,7 +68,7 @@ def disconnect_platform(platform: str):
 
 # === TikTok OAuth ===
 
-def tiktok_auth_url() -> str:
+def tiktok_auth_url(server_origin: str = "") -> str:
     import hashlib, base64, secrets
     client_key = os.getenv("TIKTOK_CLIENT_KEY", "")
     redirect = os.getenv("TIKTOK_REDIRECT_URI", "http://localhost:8000/callback/tiktok")
@@ -81,6 +81,19 @@ def tiktok_auth_url() -> str:
     tokens = _load_tokens()
     tokens["_tiktok_pkce"] = code_verifier
     _save_tokens(tokens)
+    # Encode server origin in state so callback page can redirect back
+    import urllib.parse
+    state = urllib.parse.quote(server_origin) if server_origin else ""
+    return (
+        f"https://www.tiktok.com/v2/auth/authorize/"
+        f"?client_key={client_key}"
+        f"&scope=video.upload,user.info.basic"
+        f"&response_type=code"
+        f"&redirect_uri={redirect}"
+        f"&code_challenge={code_challenge}"
+        f"&code_challenge_method=S256"
+        f"&state={state}"
+    )
     return (
         f"https://www.tiktok.com/v2/auth/authorize/"
         f"?client_key={client_key}"
