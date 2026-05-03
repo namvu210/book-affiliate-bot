@@ -99,7 +99,7 @@ async def convert_to_affiliate_link(product_url: str) -> str:
 async def process_product(inp: PipelineInput) -> PipelineResult:
     """Full pipeline — each step independent, partial results saved on failure."""
     ts = make_ts()
-    result = {"book": {}, "audience": inp.audience}
+    result = {"book": {}, "audience": inp.audience, "audience_name": inp.custom_audience.get("name", "") if isinstance(inp.custom_audience, dict) else ""}
     images = []
 
     # Step 1: Extract product info
@@ -154,10 +154,10 @@ async def process_product(inp: PipelineInput) -> PipelineResult:
 
     # Step 6: AI images (non-blocking, separate from review)
     try:
-        if len(images) < 9:
+        if len(images) < 12:
             from imagegen import generate_lifestyle_images, MAX_AI_IMAGES
             persona = inp.custom_audience or {"name": "Khách hàng phổ thông", "focus": "chất lượng sản phẩm"}
-            num_ai = min(MAX_AI_IMAGES, 9 - len(images))
+            num_ai = min(MAX_AI_IMAGES, 12 - len(images))
             ai_images = await generate_lifestyle_images(book.title, persona, num_ai, ts, images[:3] if images else [])
             images.extend(ai_images)
             log.info(f"AI images: {len(ai_images)} generated")
@@ -358,8 +358,8 @@ class VideoInput:
     img_effect: str = "ken_burns"
     img_style: str = "none"
     zoom_ratio: int = 15
-    show_intro: bool = False
-    show_outro: bool = False
+    show_intro: bool = True
+    show_outro: bool = True
     preview_only: bool = False
     intro_bg_url: str = ""
     outro_bg_url: str = ""
@@ -471,6 +471,7 @@ async def render_video(inp: VideoInput) -> dict:
         show_intro=inp.show_intro, show_outro=inp.show_outro,
         preview_only=inp.preview_only,
         intro_bg_path=intro_bg_path, outro_bg_path=outro_bg_path,
+        persona_name=data.get("audience_name", ""),
     )
 
     # Cleanup temp files

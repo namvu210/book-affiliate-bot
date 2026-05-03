@@ -202,38 +202,60 @@ async def generate_lifestyle_images(
     paths = []
     for i, scene in enumerate(scenes):
         try:
-            # Build edit request — KOL photo + ONE product photo + TEXT description
-            # Separate clearly so model doesn't confuse KOL's clothes with product
+            # Build edit request — KOL photo + TEXT description only
+            # Do NOT send product photos here — Gemini confuses product models with KOL
             contents = []
-            if kol_img:
-                contents.append(kol_img)
-                contents.append("IMAGE 1 — THE PERSON (KOL): This is the person who will appear in the photo. "
-                              "Match their exact body shape, skin tone, hair. "
-                              "What they are wearing here is NOT the product — ignore their current clothes.")
 
-            # Send product photos for visual reference
-            prod_count = 0
-            if product_images:
-                for img_url in product_images[:4]:
+            # Pre-filter: find product photos WITHOUT human models
+            clean_product_imgs = []
+            if product_images and i == 0:  # only filter once on first scene
+                for img_url in product_images[:6]:
                     local = str(Path(".") / img_url.lstrip("/"))
                     if Path(local).exists():
                         try:
-                            contents.append(Image.open(local))
-                            prod_count += 1
+                            img = Image.open(local)
+                            resp = client.models.generate_content(
+                                model=SCENE_MODEL,
+                                contents=[img, "Does this image contain a person or human model? Answer ONLY 'yes' or 'no'."],
+                                config=types.GenerateContentConfig(max_output_tokens=5),
+                            )
+                            has_person = 'yes' in resp.text.strip().lower()
+                            if not has_person:
+                                clean_product_imgs.append(local)
+                                log.info(f"Product image {img_url[-30:]}: no person → included")
+                            else:
+                                log.info(f"Product image {img_url[-30:]}: has person → excluded")
                         except Exception:
                             pass
-                if prod_count:
-                    contents.append(f"IMAGE 2-{1+prod_count} — THE PRODUCT ({prod_count} photos): "
-                                  "These show the product from different angles. "
-                                  "Match its exact color, shape, material, and design. "
-                                  "IGNORE any person/model in these photos — only look at the product itself.")
+                # Cache for subsequent scenes
+                if not hasattr(generate_lifestyle_images, '_clean_cache'):
+                    generate_lifestyle_images._clean_cache = {}
+                generate_lifestyle_images._clean_cache[ts] = clean_product_imgs
+            else:
+                clean_product_imgs = getattr(generate_lifestyle_images, '_clean_cache', {}).get(ts, [])
 
+            # Send clean product photos (no models) + text description
+            for cp in clean_product_imgs[:2]:
+                try:
+                    contents.append(Image.open(cp))
+                except Exception:
+                    pass
+            if clean_product_imgs:
+                contents.append(f"PRODUCT PHOTOS above: show the product only (no people). Match its appearance exactly.")
+
+            # Product described via text (from scene description step)
             if product_desc:
-                contents.append(f"Product description (for clarity): {product_desc}")
+                contents.append(f"Product appearance: {product_desc}")
+
+            # KOL photo — the ONLY image reference for the person
+            if kol_img:
+                contents.append(kol_img)
+                contents.append("PERSON REFERENCE (photo above): This is the person to show in the final image. "
+                              "Match this person's face, body type, skin tone, and hair exactly.")
 
             if use_kol and kol_img:
-                person_instruction = ("Put the PRODUCT (Image 2) on the PERSON (Image 1). "
-                                     "The person must look like Image 1. The product must look like Image 2.")
+                person_instruction = ("The person MUST look like the PERSON REFERENCE photo above. "
+                                     "Dress this person in the product described in the PRODUCT DESCRIPTION text.")
             else:
                 person_instruction = f"Show a {end_user_desc} (Vietnamese) with the product in a natural way."
             contents.append(

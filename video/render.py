@@ -68,6 +68,7 @@ def generate_tiktok_video(
     preview_only: bool = False,
     intro_bg_path: str | None = None,
     outro_bg_path: str | None = None,
+    persona_name: str = "",
 ) -> str:
     """Generate video with animated bg, word-by-word highlight, and optional music."""
     ASPECT_MAP = {"9:16": (1080, 1920), "1:1": (1080, 1080), "16:9": (1920, 1080)}
@@ -122,7 +123,7 @@ def generate_tiktok_video(
             loaded_imgs, sentences, sentence_durations, char_counts, total_chars,
             duration, fps, size, img_effect, img_style, zoom_ratio,
             subtitle_style, highlight_color, logo_img, logo_position,
-            book_title, cta, show_intro, show_outro, intro_bg_path, outro_bg_path,
+            book_title, cta, show_intro, show_outro, intro_bg_path, outro_bg_path, persona_name,
             preview_only,
         )
 
@@ -132,7 +133,7 @@ def _render_ffmpeg_pipeline(
     loaded_imgs, sentences, sentence_durations, char_counts, total_chars,
     duration, fps, size, img_effect, img_style, zoom_ratio,
     subtitle_style, highlight_color, logo_img, logo_position,
-    book_title, cta, show_intro, show_outro, intro_bg_path, outro_bg_path,
+    book_title, cta, show_intro, show_outro, intro_bg_path, outro_bg_path, persona_name="",
 ) -> str:
     """Fast path: PIL generates styled images, ffmpeg handles animation + subtitles."""
     W, H = size
@@ -167,15 +168,31 @@ def _render_ffmpeg_pipeline(
     # Step 3: Build intro/outro slides
     intro_path = None
     if show_intro and book_title:
-        intro_img = _make_slide(intro_bg_path, W, H, (15, 15, 35))
+        # Use first product image as background
+        first_img_bg = img_paths[0] if img_paths else intro_bg_path
+        intro_img = _make_slide(first_img_bg, W, H, (15, 15, 35))
         d = ImageDraw.Draw(intro_img)
-        tf = get_font(60, bold=True)
-        lines = wrap_text(strip_emoji(book_title), tf, W - 120, d)[:4]
-        y = (H - len(lines) * 76) // 2
-        for line in lines:
+        # Product title
+        tf = get_font(56, bold=True)
+        title_lines = wrap_text(strip_emoji(book_title), tf, W - 120, d)[:3]
+        # Persona subtitle
+        persona_lines = []
+        if persona_name:
+            sf = get_font(36)
+            persona_lines = wrap_text(strip_emoji(persona_name), sf, W - 120, d)[:2]
+        total_h = len(title_lines) * 72 + (len(persona_lines) * 48 + 16 if persona_lines else 0)
+        y = (H - total_h) // 2
+        for line in title_lines:
             bbox = d.textbbox((0, 0), line, font=tf)
             d.text(((W - bbox[2] + bbox[0]) // 2, y), line, fill=(255, 255, 255), font=tf)
-            y += 76
+            y += 72
+        if persona_lines:
+            sf = get_font(36)
+            y += 16
+            for line in persona_lines:
+                bbox = d.textbbox((0, 0), line, font=sf)
+                d.text(((W - bbox[2] + bbox[0]) // 2, y), line, fill=(255, 220, 100), font=sf)
+                y += 48
         if logo_img:
             intro_img = paste_logo(intro_img, logo_img, logo_position)
         intro_path = f"{tmpdir}/intro.png"
@@ -183,7 +200,9 @@ def _render_ffmpeg_pipeline(
 
     outro_path = None
     if show_outro and cta:
-        outro_img = _make_slide(outro_bg_path, W, H, (233, 69, 96))
+        # Use last product image as background
+        last_img_bg = img_paths[-1] if img_paths else outro_bg_path
+        outro_img = _make_slide(last_img_bg, W, H, (233, 69, 96))
         d = ImageDraw.Draw(outro_img)
         tf = get_font(48, bold=True)
         lines = wrap_text(strip_emoji(cta), tf, W - 120, d)[:4]
@@ -292,8 +311,8 @@ def _render_pil_pipeline(
     loaded_imgs, sentences, sentence_durations, char_counts, total_chars,
     duration, fps, size, img_effect, img_style, zoom_ratio,
     subtitle_style, highlight_color, logo_img, logo_position,
-    book_title, cta, show_intro, show_outro, intro_bg_path, outro_bg_path,
-    preview_only,
+    book_title, cta, show_intro, show_outro, intro_bg_path, outro_bg_path, persona_name="",
+    preview_only=False,
 ) -> str:
     """PIL frame-by-frame pipeline — pipes frames directly to ffmpeg (no temp files)."""
     W, H = size

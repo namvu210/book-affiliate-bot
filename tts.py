@@ -62,7 +62,12 @@ async def generate_audio(
         return ""
 
     if voice_type == "elevenlabs":
-        await _generate_elevenlabs(clean, output_path, elevenlabs_voice_id)
+        try:
+            await _generate_elevenlabs(clean, output_path, elevenlabs_voice_id)
+        except Exception as e:
+            import logging
+            logging.getLogger("tts").warning(f"ElevenLabs failed, falling back to gTTS: {e}")
+            await _generate_gtts(_sanitize(text, keep_audio_tags=False), output_path)
     else:
         await _generate_gtts(clean, output_path)
 
@@ -93,8 +98,9 @@ async def _generate_elevenlabs(text: str, output_path: str, voice_id_override: s
     audio = client.text_to_speech.convert(
         voice_id=voice_id,
         text=text,
-        model_id="eleven_v3",
+        model_id="eleven_flash_v2_5",
         output_format="mp3_44100_128",
+        language_code="vi",
     )
     with open(output_path, "wb") as f:
         for chunk in audio:

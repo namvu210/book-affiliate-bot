@@ -234,9 +234,11 @@
 
     <!-- Shopee Batch -->
     <div id="panel-batch" class="panel">
-        <p style="font-size:.85em;color:#666;margin-bottom:12px">Dán nhiều link Shopee (mỗi dòng 1 link). Thêm link affiliate sau dấu phẩy nếu có.</p>
-        <textarea id="batch-urls" rows="6" placeholder="https://shopee.vn/product-1-i.123.456 , https://s.shopee.vn/abc123&#10;https://shopee.vn/product-2-i.789.012 , https://s.shopee.vn/def456&#10;https://shopee.vn/product-3-i.345.678" style="width:100%;padding:10px;border:1.5px solid #ddd;border-radius:8px;font-size:.9em;font-family:monospace"></textarea>
-        <p style="font-size:.8em;color:#999;margin-top:4px">Format: <code>link_shopee , link_affiliate</code> — link affiliate là tuỳ chọn</p>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <p style="font-size:.85em;color:#666;margin:0">Thêm sản phẩm, kèm ảnh và link affiliate</p>
+            <button onclick="addProductCard()" class="btn" style="padding:6px 16px;font-size:.9em">➕ Thêm sản phẩm</button>
+        </div>
+        <div id="product-cards"></div>
         <div style="display:flex;gap:12px;margin-top:12px;align-items:center;flex-wrap:wrap">
             <label style="font-size:.85em">Đối tượng:
                 <select id="batch-audience" onchange="document.getElementById('batch-custom-persona').style.display=this.value==='custom'?'block':'none'" style="padding:6px 10px;border-radius:6px;border:1.5px solid #ddd;font-size:.85em">
@@ -1520,33 +1522,80 @@ fetch('/api/elevenlabs-voices').then(r=>r.json()).then(d=>{
     });
 }).catch(()=>{});
 
-async function pasteBatchFromShopee() {
-    try {
-        var text = await navigator.clipboard.readText();
-        if (text.startsWith('SHOPEE_BATCH:')) {
-            var products = JSON.parse(text.substring(13));
-            var urls = products.map(p => p.url).join('\n');
-            document.getElementById('batch-urls').value = urls;
-        } else if (text.startsWith('SHOPEE_DATA:')) {
-            var data = JSON.parse(text.substring(12));
-            document.getElementById('batch-urls').value = data.url || '';
-        } else {
-            document.getElementById('batch-urls').value = text;
-        }
-    } catch(e) { alert('❌ ' + e.message); }
+// === Product Cards for Batch Mode ===
+var _cardId = 0;
+function addProductCard(url, affiliate) {
+    var id = _cardId++;
+    var container = document.getElementById('product-cards');
+    var card = document.createElement('div');
+    card.id = 'pcard-' + id;
+    card.style.cssText = 'border:1.5px solid #ddd;border-radius:10px;padding:14px;margin-bottom:10px;background:#fff;position:relative';
+    card.innerHTML =
+        '<button onclick="this.parentElement.remove()" style="position:absolute;top:8px;right:10px;background:none;border:none;cursor:pointer;font-size:1.1em;color:#999" title="Xóa">✕</button>' +
+        '<div style="display:flex;gap:8px;margin-bottom:8px">' +
+            '<input type="url" class="pc-url" placeholder="https://shopee.vn/..." value="' + (url||'') + '" style="flex:2;padding:8px;border:1.5px solid #ddd;border-radius:6px;font-size:.85em">' +
+            '<input type="url" class="pc-aff" placeholder="Link affiliate (tuỳ chọn)" value="' + (affiliate||'') + '" style="flex:1;padding:8px;border:1.5px solid #ddd;border-radius:6px;font-size:.85em">' +
+        '</div>' +
+        '<div class="pc-dropzone" style="border:2px dashed #ddd;border-radius:8px;padding:16px;text-align:center;color:#999;cursor:pointer;font-size:.85em;min-height:60px" ' +
+            'ondragover="event.preventDefault();this.style.borderColor=\'#e94560\'" ondragleave="this.style.borderColor=\'#ddd\'">' +
+            '📷 Kéo thả ảnh hoặc click để chọn (jpg, png)' +
+            '<input type="file" multiple accept="image/*" style="display:none">' +
+        '</div>' +
+        '<div class="pc-thumbs" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px"></div>';
+    // Bind events using direct references to avoid closure issues
+    var dropzone = card.querySelector('.pc-dropzone');
+    var fileInput = card.querySelector('input[type="file"]');
+    dropzone.addEventListener('click', function() { fileInput.click(); });
+    dropzone.addEventListener('drop', function(e) { e.preventDefault(); this.style.borderColor='#ddd'; addFilesToCard(card, e.dataTransfer.files); });
+    fileInput.addEventListener('change', function() { addFilesToCard(card, this.files); });
+    container.appendChild(card);
+    return id;
 }
 
+function addFilesToCard(card, files) {
+    var thumbs = card.querySelector('.pc-thumbs');
+    if (!card._files) card._files = [];
+    for (var i = 0; i < files.length; i++) {
+        if (!files[i].type.startsWith('image/')) continue;
+        card._files.push(files[i]);
+        var img = document.createElement('img');
+        img.style.cssText = 'height:60px;border-radius:4px;object-fit:cover';
+        img.src = URL.createObjectURL(files[i]);
+        thumbs.appendChild(img);
+    }
+    card.querySelector('.pc-dropzone').style.borderColor = '#4ecca3';
+}
+
+function getProductCards() {
+    var cards = document.querySelectorAll('[id^="pcard-"]');
+    var products = [];
+    cards.forEach(function(card) {
+        var url = card.querySelector('.pc-url')?.value?.trim();
+        if (!url || !url.startsWith('http')) return;
+        products.push({
+            url: url,
+            affiliate: card.querySelector('.pc-aff')?.value?.trim() || '',
+            files: card._files || [],
+        });
+    });
+    return products;
+}
+
+// Add first card on load
+document.addEventListener('DOMContentLoaded', function() { addProductCard(); });
+
+// Store batch state for step-by-step flow
+var _batchState = { products: [], currentIdx: 0, results: [] };
+
 async function startBatchReview() {
-    var textarea = document.getElementById('batch-urls');
-    var lines = textarea.value.trim().split('\n').map(l => l.trim()).filter(l => l);
-    var urlPairs = lines.map(function(line) {
-        var parts = line.split(',').map(s => s.trim());
-        return { url: parts[0], affiliate: parts[1] || '' };
-    }).filter(p => p.url.startsWith('http'));
-    if (urlPairs.length === 0) { alert('Nhập ít nhất 1 link Shopee!'); return; }
-    var urls = urlPairs.map(p => p.url);
-    var affiliateMap = {};
-    urlPairs.forEach(function(p) { if (p.affiliate) affiliateMap[p.url] = p.affiliate; });
+    var products = getProductCards();
+    if (products.length === 0) { alert('Thêm ít nhất 1 sản phẩm!'); return; }
+    var btn = document.getElementById('btn-batch-review');
+    var progress = document.getElementById('batch-progress');
+    var results = document.getElementById('batch-results');
+    var batchVoice = getGlobalVoice();
+    var wordCount = document.getElementById('batch-word-count')?.value || '150';
+    var wordCountFb = document.getElementById('batch-word-count-fb')?.value || '200';
     var audience = document.getElementById('batch-audience').value;
     var customAudience = '';
     if (audience === 'custom') {
@@ -1556,102 +1605,222 @@ async function startBatchReview() {
             focus: document.getElementById('batch-cp-focus').value || 'chất lượng sản phẩm',
         });
     }
-    var btn = document.getElementById('btn-batch-review');
-    var progress = document.getElementById('batch-progress');
-    var results = document.getElementById('batch-results');
-    var batchVoice = getGlobalVoice();
-    var voiceType = batchVoice.type;
-    var voiceId = batchVoice.voiceId;
-    var wordCount = document.getElementById('batch-word-count')?.value || '150';
-    var wordCountFb = document.getElementById('batch-word-count-fb')?.value || '200';
-    batchLog('Voice: ' + voiceType + (voiceId ? ':' + voiceId : '') + ', Word count: ' + wordCount);
     btn.disabled = true;
     results.innerHTML = '';
+    _batchState = { products: products, currentIdx: 0, results: [], voice: batchVoice, wordCount: wordCount, wordCountFb: wordCountFb, audience: audience, customAudience: customAudience };
+    batchLog('Products: ' + products.length + ', Voice: ' + batchVoice.type + ', Audience: ' + audience);
 
-    // Use auto-persona mode (LLM suggests 3 personas per product)
-    if (audience === 'auto') {
-        batchLog('Mode: Auto-persona (' + urls.length + ' URLs × 3 personas)');
-        progress.innerHTML = '<div style="font-size:.9em">⏳ Đang phân tích ' + urls.length + ' sản phẩm × 3 personas...</div>';
+    // Step 1: Suggest personas for all products
+    progress.innerHTML = '<div style="font-size:.9em">⏳ Bước 1: Phân tích đối tượng khách hàng...</div>';
+    for (var i = 0; i < products.length; i++) {
+        var p = products[i];
         try {
-            var fd = new FormData();
-            fd.append('urls', urls.join('\n'));
-            fd.append('affiliate_urls', JSON.stringify(affiliateMap));
-            fd.append('voice_type', voiceType);
-            fd.append('voice_id', voiceId);
-            fd.append('word_count', wordCount);
-            fd.append('word_count_fb', wordCountFb);
-            batchLog('Calling /batch-personas...');
-            var resp = await fetch('/batch-personas', { method: 'POST', body: fd });
-            if (!resp.ok) throw new Error('Lỗi server: ' + resp.status);
-            var data = await resp.json();
-            batchLog('Response: ' + (data.results||[]).length + ' products');
-            var html = '';
-            (data.results || []).forEach(function(product, pi) {
-                html += '<div class="result-card" style="margin-bottom:12px;padding:16px">';
-                if (product.error) {
-                    batchLog('❌ Product ' + (pi+1) + ': ' + product.error);
-                    html += '<strong>❌ ' + product.title.substring(0,50) + '</strong> — ' + product.error;
-                } else {
-                    batchLog('✅ Product ' + (pi+1) + ': ' + product.title.substring(0,40) + ' → ' + product.personas.length + ' personas, ' + product.reviews.length + ' reviews');
-                    html += '<h3 style="margin-bottom:8px">📦 ' + product.title.substring(0,60) + '</h3>';
-                    (product.reviews || []).forEach(function(rev, ri) {
-                        var persona = rev.persona || {};
-                        var tkPost = rev.data?.tiktok?.social_post || '';
-                        var tkAudio = rev.data?.tiktok?.audio_url || '';
-                        batchLog('  Persona ' + (ri+1) + ': ' + (persona.name||'?') + ' → ' + (rev.error || (tkPost.length + ' chars')));
-                        html += '<div style="padding:8px;margin:4px 0;background:#f8f9fa;border-radius:6px">';
-                        html += '<strong>🎯 ' + (persona.name || 'Persona ' + (ri+1)) + '</strong>';
-                        html += ' <span style="font-size:.8em;color:#666">(' + (persona.focus || '') + ')</span>';
-                        if (tkAudio) html += ' <audio controls style="height:24px;vertical-align:middle"><source src="' + tkAudio + '"></audio>';
-                        html += ' <button class="copy-btn" onclick="navigator.clipboard.writeText(this.dataset.t)" data-t="' + tkPost.replace(/"/g,'&quot;') + '">📋 Copy</button>';
-                        html += '</div>';
-                    });
+            // Get title from URL slug
+            var slug = decodeURIComponent(p.url.split('shopee.vn/')[1] || '').split('-i.')[0].replace(/-/g, ' ');
+            if (audience === 'auto') {
+                var fd = new FormData();
+                fd.append('title', slug);
+                var resp = await fetch('/suggest-personas', { method: 'POST', body: fd });
+                var pdata = await resp.json();
+                p.personas = (pdata.personas || []).slice(0, 2);
+                batchLog('📦 ' + (i+1) + '. ' + slug.substring(0,40) + ' → ' + p.personas.map(x => x.name).join(', '));
+            } else {
+                p.personas = customAudience ? [JSON.parse(customAudience)] : [{name:'Khách hàng', tone:'thân thiện', focus:'chất lượng'}];
+            }
+            if (!p.personas.length) p.personas = [{name:'Khách hàng phổ thông', tone:'thân thiện', focus:'chất lượng sản phẩm'}];
+            p.title = slug;
+        } catch(e) {
+            batchLog('❌ Persona failed for ' + (i+1) + ': ' + e.message);
+            p.personas = [{name:'Khách hàng phổ thông', tone:'thân thiện', focus:'chất lượng sản phẩm'}];
+            p.title = p.url.substring(0, 50);
+        }
+    }
+
+    // Show personas and wait for approval
+    var html = '<h3 style="margin-bottom:12px">📋 Bước 1: Xác nhận đối tượng khách hàng</h3>';
+    products.forEach(function(p, i) {
+        html += '<div class="result-card" style="padding:12px;margin-bottom:8px">';
+        html += '<strong>' + (i+1) + '. ' + (p.title||'').substring(0,60) + '</strong>';
+        html += '<div style="margin-top:6px">';
+        p.personas.forEach(function(per, j) {
+            html += '<span style="display:inline-block;background:#e8f0fe;padding:4px 10px;border-radius:12px;font-size:.85em;margin:2px 4px">🎯 ' + per.name + '</span>';
+        });
+        html += '</div></div>';
+    });
+    html += '<div style="margin-top:12px"><button class="btn" onclick="batchStep2()" style="padding:10px 24px">✅ Tiếp tục → Tạo Review</button> ';
+    html += '<button onclick="document.getElementById(\'btn-batch-review\').disabled=false;document.getElementById(\'batch-results\').innerHTML=\'\'" style="padding:10px 16px;background:#eee;border:1px solid #ddd;border-radius:8px;cursor:pointer">❌ Hủy</button></div>';
+    results.innerHTML = html;
+    progress.innerHTML = '';
+}
+
+async function batchStep2() {
+    var products = _batchState.products;
+    var progress = document.getElementById('batch-progress');
+    var results = document.getElementById('batch-results');
+    var voice = _batchState.voice;
+
+    results.innerHTML = '<h3 style="margin-bottom:12px">⏳ Bước 2: Tạo Review...</h3>';
+    var allReviews = [];
+
+    for (var i = 0; i < products.length; i++) {
+        var p = products[i];
+        progress.innerHTML = '<div style="font-size:.9em">⏳ Sản phẩm ' + (i+1) + '/' + products.length + '...</div>' +
+            '<div style="background:#eee;border-radius:4px;height:8px;margin-top:6px"><div style="background:#e94560;height:8px;border-radius:4px;width:' + ((i+1)/products.length*100) + '%"></div></div>';
+
+        for (var j = 0; j < p.personas.length; j++) {
+            var persona = p.personas[j];
+            batchLog('Generating: ' + (p.title||'').substring(0,30) + ' × ' + persona.name);
+            try {
+                var fd = new FormData();
+                fd.append('url', p.url);
+                if (p.affiliate) fd.append('affiliate_url', p.affiliate);
+                fd.append('audience', 'custom');
+                fd.append('custom_audience', JSON.stringify(persona));
+                fd.append('word_count_tk', _batchState.wordCount);
+                fd.append('word_count_fb', _batchState.wordCountFb);
+                for (var k = 0; k < p.files.length; k++) fd.append('media', p.files[k]);
+                var resp = await fetch('/from-url', { method: 'POST', body: fd });
+                if (!resp.ok) throw new Error('Lỗi server');
+                var data = await resp.json();
+                allReviews.push({ product: p, persona: persona, data: data, idx: i });
+                batchLog('✅ ' + persona.name + ' → TK:' + (data.tiktok?.social_post||'').length + ' FB:' + (data.facebook?.social_post||'').length);
+            } catch(e) {
+                batchLog('❌ ' + persona.name + ': ' + e.message);
+                allReviews.push({ product: p, persona: persona, data: null, error: e.message, idx: i });
+            }
+        }
+    }
+
+    _batchState.reviews = allReviews;
+
+    // Show all reviews for approval
+    var html = '<h3 style="margin-bottom:12px">📋 Bước 2: Xem lại Review</h3>';
+    var lastIdx = -1;
+    allReviews.forEach(function(r, ri) {
+        if (r.idx !== lastIdx) {
+            if (lastIdx >= 0) html += '</div>';
+            html += '<div class="result-card" style="padding:14px;margin-bottom:10px">';
+            html += '<h4 style="margin-bottom:8px">📦 ' + (r.idx+1) + '. ' + (r.product.title||'').substring(0,60) + '</h4>';
+            lastIdx = r.idx;
+        }
+        html += '<div style="padding:8px;margin:6px 0;background:#f8f9fa;border-radius:6px">';
+        html += '<strong>🎯 ' + r.persona.name + '</strong>';
+        if (r.error) {
+            html += ' <span style="color:red">❌ ' + r.error + '</span>';
+        } else {
+            var tk = r.data?.tiktok?.social_post || '';
+            var fb = r.data?.facebook?.social_post || '';
+            var tkAudio = r.data?.tiktok?.audio_url || '';
+            var fbAudio = r.data?.facebook?.audio_url || '';
+            if (tkAudio) html += '<div style="margin-top:4px"><span style="font-size:.8em;color:#666">🎵 TikTok:</span> <audio controls style="height:24px;vertical-align:middle"><source src="' + tkAudio + '"></audio></div>';
+            if (fbAudio) html += '<div><span style="font-size:.8em;color:#666">📘 Facebook:</span> <audio controls style="height:24px;vertical-align:middle"><source src="' + fbAudio + '"></audio></div>';
+            html += '<div style="margin-top:6px;font-size:.85em">';
+            html += '<details><summary>🎵 TikTok (' + tk.length + ' ký tự)</summary><pre style="white-space:pre-wrap;background:#fff;padding:8px;border-radius:4px;margin-top:4px;font-family:inherit;font-size:.9em">' + tk.replace(/</g,'&lt;') + '</pre></details>';
+            html += '<details><summary>📘 Facebook (' + fb.length + ' ký tự)</summary><pre style="white-space:pre-wrap;background:#fff;padding:8px;border-radius:4px;margin-top:4px;font-family:inherit;font-size:.9em">' + fb.replace(/</g,'&lt;') + '</pre></details>';
+            html += '</div>';
+        }
+        html += '</div>';
+    });
+    if (lastIdx >= 0) html += '</div>';
+
+    html += '<div style="margin-top:12px"><button class="btn" onclick="batchStep3()" style="padding:10px 24px">✅ Tiếp tục → Tạo Video</button> ';
+    html += '<button onclick="document.getElementById(\'btn-batch-review\').disabled=false;document.getElementById(\'batch-results\').innerHTML=\'\'" style="padding:10px 16px;background:#eee;border:1px solid #ddd;border-radius:8px;cursor:pointer">❌ Hủy</button></div>';
+    results.innerHTML = html;
+    progress.innerHTML = '';
+}
+
+async function batchStep3() {
+    var reviews = _batchState.reviews.filter(r => r.data);
+    var progress = document.getElementById('batch-progress');
+    var results = document.getElementById('batch-results');
+
+    results.innerHTML = '<h3 style="margin-bottom:12px">⏳ Bước 3: Tạo Video...</h3>';
+    var videoResults = [];
+
+    for (var i = 0; i < reviews.length; i++) {
+        var r = reviews[i];
+        progress.innerHTML = '<div style="font-size:.9em">⏳ Video ' + (i+1) + '/' + reviews.length + ' — ' + r.persona.name + '...</div>';
+
+        for (var platform of ['tiktok', 'facebook']) {
+            try {
+                var fd = new FormData();
+                fd.append('review_json', JSON.stringify(r.data));
+                fd.append('platform', platform);
+                fd.append('aspect_ratio', '9:16');
+                fd.append('voice_speed', _batchState.voice.speed);
+                var resp = await fetch('/generate-video', { method: 'POST', body: fd });
+                if (!resp.ok) {
+                    var errData = await resp.json().catch(function() { return {}; });
+                    throw new Error(errData.detail || 'HTTP ' + resp.status);
                 }
-                html += '</div>';
-            });
-            results.innerHTML = html;
-            progress.innerHTML = '<div style="font-size:.9em;color:green">✅ Hoàn thành ' + urls.length + ' sản phẩm × 3 personas!</div>';
-        } catch(e) {
-            progress.innerHTML = '<div style="color:red">❌ ' + e.message + '</div>';
+                var vdata = await resp.json();
+                videoResults.push({ review: r, platform: platform, video_url: vdata.video_url, srt_url: vdata.srt_url });
+                batchLog('🎬 ' + r.persona.name + ' → ' + platform + ': ' + vdata.video_url);
+            } catch(e) {
+                batchLog('❌ Video ' + platform + ': ' + e.message);
+                videoResults.push({ review: r, platform: platform, error: e.message });
+            }
         }
-        btn.disabled = false;
-        return;
     }
 
-    // Fixed persona mode (sequential, one review per product)
-    batchLog('Mode: Fixed persona (' + urls.length + ' URLs, audience=' + audience + ')');
-    var html = '';
-    for (var i = 0; i < urls.length; i++) {
-        progress.innerHTML = '<div style="font-size:.9em">⏳ Đang xử lý ' + (i+1) + '/' + urls.length + '...</div>' +
-            '<div style="background:#eee;border-radius:4px;height:8px;margin-top:6px"><div style="background:#e94560;height:8px;border-radius:4px;width:' + ((i+1)/urls.length*100) + '%"></div></div>';
-        try {
-            var fd = new FormData();
-            fd.append('url', urls[i]);
-            if (affiliateMap[urls[i]]) fd.append('affiliate_url', affiliateMap[urls[i]]);
-            fd.append('audience', audience);
-            if (customAudience) fd.append('custom_audience', customAudience);
-            fd.append('word_count_tk', wordCount);
-            fd.append('word_count_fb', wordCountFb);
-            fd.append('voice_type', voiceType);
-            if (voiceId) fd.append('elevenlabs_voice_id', voiceId);
-            var resp = await fetch('/from-url', { method: 'POST', body: fd });
-            if (!resp.ok) throw new Error('Lỗi server');
-            var data = await resp.json();
-            var title = data.book?.title || 'Sản phẩm';
-            var tkPost = data.tiktok?.social_post || '';
-            var tkAudio = data.tiktok?.audio_url || '';
-            html += '<div class="result-card" style="padding:12px;margin-bottom:8px">' +
-                '<strong>✅ ' + (i+1) + '. ' + title.substring(0,60) + '</strong>' +
-                (tkAudio ? ' <audio controls style="height:28px;vertical-align:middle"><source src="' + tkAudio + '"></audio>' : '') +
-                '<button class="copy-btn" onclick="navigator.clipboard.writeText(this.dataset.t)" data-t="' + tkPost.replace(/"/g,'&quot;') + '">📋 Copy TikTok</button>' +
-                '</div>';
-        } catch(e) {
-            html += '<div class="result-card" style="padding:12px;margin-bottom:8px;border-left:3px solid red">' +
-                '<strong>❌ ' + (i+1) + '. ' + urls[i].substring(0,50) + '</strong> — ' + e.message + '</div>';
+    // Show videos with publish buttons
+    var html = '<h3 style="margin-bottom:12px">📋 Bước 3: Video & Đăng bài</h3>';
+    // Store review data for publish buttons
+    window._batchReviews = videoResults.map(function(v) { return v.review.data; });
+
+    var lastReviewIdx = -1;
+    videoResults.forEach(function(v, vi) {
+        var reviewIdx = Math.floor(vi / 2);  // 2 platforms per review
+        if (reviewIdx !== lastReviewIdx) {
+            if (lastReviewIdx >= 0) html += '</div>';
+            html += '<div class="result-card" style="padding:14px;margin-bottom:10px">';
+            html += '<h4>📦 ' + (v.review.idx+1) + '. ' + (v.review.product.title||'').substring(0,50) + '</h4>';
+            html += '<div style="font-size:.85em;color:#666;margin-bottom:8px">🎯 ' + v.review.persona.name + '</div>';
+            lastReviewIdx = reviewIdx;
         }
-        results.innerHTML = html;
+        var label = v.platform === 'tiktok' ? '🎵 TikTok' : '📘 Reels';
+        if (v.error) {
+            html += '<div style="margin:4px 0;font-size:.85em;color:red">❌ ' + label + ': ' + v.error + '</div>';
+        } else {
+            html += '<div style="display:inline-block;margin:6px 8px 6px 0;vertical-align:top">';
+            html += '<video controls style="max-width:180px;border-radius:8px"><source src="' + v.video_url + '" type="video/mp4"></video>';
+            html += '<br><a href="' + v.video_url + '" download class="btn" style="font-size:.75em;padding:4px 10px;margin-top:4px;display:inline-block">⬇️ ' + label + '</a>';
+            html += ' <button class="btn" onclick="batchPublish(' + vi + ',\'' + v.video_url + '\',\'' + v.platform + '\',this)" style="font-size:.75em;padding:4px 10px;margin-top:4px;background:' + (v.platform==='tiktok'?'#000':'#1877f2') + '">📤 Đăng</button>';
+            html += '<span class="bp-status" style="font-size:.8em;display:block;margin-top:2px"></span>';
+            html += '</div>';
+        }
+    });
+    if (lastReviewIdx >= 0) html += '</div>';
+
+    results.innerHTML = html;
+    progress.innerHTML = '<div style="font-size:.9em;color:green">✅ Hoàn thành! Xem video và đăng bài bên dưới.</div>';
+    document.getElementById('btn-batch-review').disabled = false;
+async function batchPublish(vi, videoUrl, platform, btn) {
+    var reviewData = window._batchReviews[vi];
+    if (!reviewData) { alert('Review data not found'); return; }
+    var status = btn.parentElement.querySelector('.bp-status');
+    var label = {tiktok:'TikTok',facebook:'Facebook Reels',youtube:'YouTube Shorts'}[platform] || platform;
+    btn.disabled = true;
+    if (status) status.textContent = '⏳ Đang đăng ' + label + '...';
+    try {
+        var fd = new FormData();
+        fd.append('review_json', JSON.stringify(reviewData));
+        fd.append('video_url', videoUrl);
+        fd.append('platforms', platform);
+        var resp = await fetch('/publish', {method: 'POST', body: fd});
+        var data = await resp.json();
+        var r = (data.results || [])[0];
+        if (r && status) {
+            var msg = (r.success ? '✅' : '❌') + ' ' + r.message;
+            if (r.post_id && r.success) {
+                var urls = {facebook:'https://www.facebook.com/'+r.post_id, youtube:'https://youtu.be/'+r.post_id};
+                if (urls[r.platform]) msg += ' <a href="'+urls[r.platform]+'" target="_blank">Xem →</a>';
+            }
+            status.innerHTML = msg;
+        }
+    } catch(e) {
+        if (status) status.textContent = '❌ ' + e.message;
     }
-    progress.innerHTML = '<div style="font-size:.9em;color:green">✅ Hoàn thành ' + urls.length + ' sản phẩm!</div>';
     btn.disabled = false;
 }
 </script>
