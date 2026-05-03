@@ -1,13 +1,8 @@
-TODO - Book Affiliate Bot
-=========================
-Updated: 2026-05-03
+TODO - Product Affiliate Bot
+=============================
+Updated: 2026-05-04
 
-## DONE ✅
-- [x] Fix video FPS from 10 to 24 (render.py:77, fps=24)
-- [x] Implement Facebook Reels in poster.py (full 3-step Graph API + auto-comment affiliate link)
-- [x] OAuth flow for TikTok, YouTube, Facebook (auth.py + app.py routes)
-- [x] .gitignore entries for kol/, output/, voices/, templates_video/, music/
-- [x] n8n webhook URL config (config.py)
+## DONE ✅ (May 3)
 - [x] TikTok OAuth via GitHub Pages callback relay
 - [x] TikTok video upload (Content Posting API, inbox/draft mode)
 - [x] YouTube Shorts upload (resumable upload, private mode)
@@ -15,52 +10,82 @@ Updated: 2026-05-03
 - [x] Affiliate link flows to all platforms (FB comment, YT desc+comment, TT reminder)
 - [x] KOL expert persona in review prompts
 - [x] GitHub Pages landing page + privacy/terms for TikTok app review
-- [x] Replace 37 print() calls with logging module
+- [x] TikTok app submitted for review
+- [x] Replace 37 print() with logging module
 - [x] Input validation on /publish endpoint
 - [x] Async Gemini calls (asyncio.to_thread)
 - [x] Replace LLM music genre picker with keyword matching
 - [x] Global voice settings (type, voice ID, speed) consolidated in UI
-- [x] Batch mode: affiliate link support (URL,affiliate per line)
+- [x] Batch mode: product cards UI (URL + affiliate + image drop zone per product)
+- [x] Batch mode: step-by-step flow (personas → reviews → videos → publish)
+- [x] Batch mode: multi-persona (2 personas × 2 platforms per product)
 - [x] Batch mode: Facebook word count slider
-- [x] Remove misleading "Dán từ Shopee" button from batch mode
-- [x] Remove book-specific preset personas from batch mode
+- [x] Batch mode: publish buttons with correct review data per video
+- [x] ElevenLabs Flash v2.5 with Vietnamese language_code
+- [x] Auto-fallback to gTTS when ElevenLabs quota exceeded
+- [x] Intro/outro always on, using first/last product image as background
+- [x] Intro shows product title + persona name
+- [x] AI image pre-filter: exclude product photos with human models
+- [x] AI image generation: KOL photo + text description only (no model confusion)
+- [x] Image cap raised to 12 (was 9)
+- [x] Remove book-specific preset personas
+- [x] Remove misleading "Dán từ Shopee" from batch mode
+- [x] Add music/ to .gitignore
+- [x] Code review: no secrets in git
 
-## Platform Setup (manual, no code)
-- [ ] TikTok app approval (submitted, waiting 1-2 weeks)
-- [ ] Sign up for AccessTrade at accesstrade.vn
-      → Apply to Shopee campaign
-      → Get API key
+## Platform Setup
+- [ ] TikTok app approval (submitted, waiting)
+- [ ] AccessTrade: sign up, apply to Shopee campaign
+- [ ] AccessTrade: integrate tracking link API (replace AffiPad for affiliate links)
 
 ## Multi-Account Publishing
 - [ ] Support multiple Facebook pages (store array of page tokens)
-      → OAuth already fetches all pages, currently picks first only
-      → UI: let user pick which page(s) to post to
 - [ ] Different content per page with final approval before publish
-      → User selects which videos/content goes to which pages
-- [ ] Support multiple TikTok accounts (same pattern)
-- [ ] Support multiple YouTube channels
+- [ ] Support multiple TikTok/YouTube accounts
 
-## AccessTrade Integration
-- [ ] Test AccessTrade product detail API — does it return multiple images?
-- [ ] If yes: replace AffiPad with AccessTrade for:
-      → Product images (multiple per product)
-      → Affiliate link generation
-      → Product discovery (trending products)
-- [ ] Integrate "top sản phẩm bán chạy" for auto product discovery
+## Video Generation Performance
+Current: ~45-60s per video (2 products × 2 personas × 2 platforms = 8 videos ≈ 8 min)
+
+Bottlenecks (per video):
+  1. ffmpeg segment encoding: ~15-20s (one segment per image, sequential)
+  2. Music fetch from Freesound: ~3-5s (first video only, cached after)
+  3. TTS generation: ~5-10s (ElevenLabs API)
+  4. AI image generation: ~15s per image (Gemini image model)
+  5. Image pre-filter: ~3s per product photo (new, runs once per product)
+
+Improvement options:
+  - [ ] Parallel ffmpeg segments: encode image segments in parallel (subprocess pool)
+        → Estimated savings: 10-15s per video
+  - [ ] Pre-generate all audio before video step (batch TTS)
+        → Audio already exists from Step 2, but re-generated if voice_speed differs
+  - [ ] Cache AI images across personas of same product
+        → Same product photos → reuse scene descriptions + filtered images
+  - [ ] Reduce ffmpeg quality for preview (lower resolution, faster preset)
+  - [ ] Use ffmpeg concat demuxer with image duration instead of per-segment encoding
+        → Single ffmpeg call instead of N+2 calls
+        → Estimated savings: 20-30s per video (biggest win)
+  - [ ] Pre-cache music per genre (download 5 tracks per genre on first run)
+
+## AI Image Quality
+- [ ] Test pre-filter accuracy (does it correctly exclude model photos?)
+- [ ] Test KOL resemblance with text-only product description
+- [ ] Consider: send 1 clean product photo + KOL if pre-filter finds any
+- [ ] Fallback: if no clean product photos found, use text-only approach
 
 ## Code Cleanup
 - [ ] Clarify or remove _can_use_ffmpeg_pipeline dual-path in render.py
+- [ ] Remove _clean_cache hack in imagegen.py (use proper function parameter)
 
-## Testing (no tests exist yet)
+## Testing
 - [ ] Set up pytest
-- [ ] Test bookmarklet on different Shopee product types
 - [ ] Test batch generation with 5+ products
 - [ ] Test AI image generation quality with KOL photo
-- [ ] Test video effects presets (all 8)
-- [ ] Test affiliate link in review CTA (does it track?)
-- [ ] Verify ElevenLabs voice in batch mode
+- [ ] Test all 8 video effect presets
+- [ ] Test affiliate link tracking
+- [ ] Verify ElevenLabs Vietnamese voice quality
 
 ## Future
-- [ ] Auto-posting scheduler (post at optimal times)
+- [ ] Auto-posting scheduler
 - [ ] Analytics dashboard (which products convert)
-- [ ] Windows x86 deployment testing
+- [ ] AccessTrade "top sản phẩm bán chạy" auto-discovery
+- [ ] Windows deployment testing
