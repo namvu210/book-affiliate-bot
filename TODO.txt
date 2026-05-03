@@ -1,32 +1,44 @@
 TODO - Book Affiliate Bot
 =========================
-Updated: 2026-05-02
+Updated: 2026-05-03
 
 ## DONE ✅
 - [x] Fix video FPS from 10 to 24 (render.py:77, fps=24)
 - [x] Implement Facebook Reels in poster.py (full 3-step Graph API + auto-comment affiliate link)
 - [x] OAuth flow for TikTok, YouTube, Facebook (auth.py + app.py routes)
-- [x] .gitignore entries for kol/, output/, voices/, templates_video/
+- [x] .gitignore entries for kol/, output/, voices/, templates_video/, music/
 - [x] n8n webhook URL config (config.py)
+- [x] TikTok OAuth via GitHub Pages callback relay
+- [x] TikTok video upload (Content Posting API, inbox/draft mode)
+- [x] YouTube Shorts upload (resumable upload, private mode)
+- [x] TikTok/YouTube/Facebook publish buttons in main UI + batch view
+- [x] Affiliate link flows to all platforms (FB comment, YT desc+comment, TT reminder)
+- [x] KOL expert persona in review prompts
+- [x] GitHub Pages landing page + privacy/terms for TikTok app review
+- [x] Replace 37 print() calls with logging module
+- [x] Input validation on /publish endpoint
+- [x] Async Gemini calls (asyncio.to_thread)
+- [x] Replace LLM music genre picker with keyword matching
+- [x] Global voice settings (type, voice ID, speed) consolidated in UI
+- [x] Batch mode: affiliate link support (URL,affiliate per line)
+- [x] Batch mode: Facebook word count slider
+- [x] Remove misleading "Dán từ Shopee" button from batch mode
+- [x] Remove book-specific preset personas from batch mode
 
 ## Platform Setup (manual, no code)
-- [ ] Register TikTok developer app at developers.tiktok.com
-      → Add Content Posting API product
-      → Request video.upload scope approval (takes 1-2 weeks)
-- [ ] Create Facebook App at developers.facebook.com
-      → Request pages_manage_posts permission
-      → Get Page access token for your Facebook Page
+- [ ] TikTok app approval (submitted, waiting 1-2 weeks)
 - [ ] Sign up for AccessTrade at accesstrade.vn
       → Apply to Shopee campaign
       → Get API key
 
-## Posting Module
-- [ ] Implement TikTok upload in poster.py (FILE_UPLOAD method)
-      → OAuth is done, need actual upload logic
-      → Init upload → PUT video binary → Check status
-      → Note: uploads as draft, user confirms in TikTok app
-- [ ] Implement YouTube Shorts in poster.py
-      → OAuth is done, need videos.insert endpoint call
+## Multi-Account Publishing
+- [ ] Support multiple Facebook pages (store array of page tokens)
+      → OAuth already fetches all pages, currently picks first only
+      → UI: let user pick which page(s) to post to
+- [ ] Different content per page with final approval before publish
+      → User selects which videos/content goes to which pages
+- [ ] Support multiple TikTok accounts (same pattern)
+- [ ] Support multiple YouTube channels
 
 ## AccessTrade Integration
 - [ ] Test AccessTrade product detail API — does it return multiple images?
@@ -37,10 +49,7 @@ Updated: 2026-05-02
 - [ ] Integrate "top sản phẩm bán chạy" for auto product discovery
 
 ## Code Cleanup
-- [ ] Replace 34 debug print() calls with logging module (across 6 files)
-- [ ] Add music/ to .gitignore
 - [ ] Clarify or remove _can_use_ffmpeg_pipeline dual-path in render.py
-      → Currently hybrid PIL+ffmpeg — is the pure-ffmpeg path still needed?
 
 ## Testing (no tests exist yet)
 - [ ] Set up pytest
@@ -52,7 +61,6 @@ Updated: 2026-05-02
 - [ ] Verify ElevenLabs voice in batch mode
 
 ## Future
-- [ ] Video mode (native video clip playback)
 - [ ] Auto-posting scheduler (post at optimal times)
 - [ ] Analytics dashboard (which products convert)
 - [ ] Windows x86 deployment testing

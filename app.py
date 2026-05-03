@@ -34,7 +34,7 @@ async def global_error_handler(request: Request, exc: Exception):
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request, "audiences": AUDIENCES, "default_voice_speed": DEFAULT_VOICE_SPEED})
+    return templates.TemplateResponse("index.html", {"request": request, "audiences": AUDIENCES, "default_voice_speed": DEFAULT_VOICE_SPEED, "default_voice_id": os.getenv("ELEVENLABS_VOICE_ID", "")})
 
 
 @app.get("/terms", response_class=HTMLResponse)
@@ -334,16 +334,19 @@ async def upload_video(video: UploadFile):
 @app.post("/batch-personas")
 async def batch_personas(
     urls: str = Form(...),
+    affiliate_urls: str = Form("{}"),
     voice_type: str = Form("elevenlabs"),
     voice_id: str = Form("T4jrQr9x0Y24833yKCWR"),
     word_count: int = Form(150),
+    word_count_fb: int = Form(200),
 ):
     """Batch: suggest personas per product, generate reviews for each persona."""
     from pipeline import batch_with_personas
     url_list = [u.strip() for u in urls.split("\n") if u.strip().startswith("http")]
     if not url_list:
         raise HTTPException(400, "Nhập ít nhất 1 link Shopee")
-    results = await batch_with_personas(url_list[:10], voice_type, voice_id, word_count)
+    aff_map = json.loads(affiliate_urls) if affiliate_urls else {}
+    results = await batch_with_personas(url_list[:10], voice_type, voice_id, word_count, aff_map, word_count_fb)
     return {"results": [
         {
             "url": r.url,

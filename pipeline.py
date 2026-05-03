@@ -260,9 +260,10 @@ class BatchPersonaResult:
     error: str = ""
 
 
-async def batch_with_personas(urls: list[str], voice_type: str = "elevenlabs", voice_id: str = "", word_count: int = 150) -> list[BatchPersonaResult]:
+async def batch_with_personas(urls: list[str], voice_type: str = "elevenlabs", voice_id: str = "", word_count: int = 150, affiliate_map: dict = None, word_count_fb: int = 200) -> list[BatchPersonaResult]:
     """For each URL: suggest 2 personas, then generate a review for each persona."""
     import asyncio
+    affiliate_map = affiliate_map or {}
     results = []
     for url in urls:
         try:
@@ -276,7 +277,9 @@ async def batch_with_personas(urls: list[str], voice_type: str = "elevenlabs", v
             reviews = []
             for persona in personas[:2]:
                 inp = PipelineInput(url=url, custom_audience=persona, word_count_tk=word_count,
-                                    voice_type=voice_type, elevenlabs_voice_id=voice_id)
+                                    word_count_fb=word_count_fb,
+                                    voice_type=voice_type, elevenlabs_voice_id=voice_id,
+                                    affiliate_url=affiliate_map.get(url, ""))
                 r = await process_product(inp)
                 reviews.append(r)
 

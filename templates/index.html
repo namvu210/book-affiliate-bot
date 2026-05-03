@@ -167,6 +167,21 @@
         <button class="tab" data-tab="batch" onclick="switchTab('batch')">📦 Shopee Batch</button>
     </div>
 
+    <!-- Global Voice Settings -->
+    <div style="padding:10px 16px;background:#f8f9fa;border-radius:8px;margin-bottom:12px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:.85em">
+        <label style="font-weight:500">🗣️ Giọng đọc:</label>
+        <select id="global-voice-type" style="padding:6px 10px;border-radius:6px;border:1.5px solid #ddd" onchange="onGlobalVoiceChange()">
+            <option value="elevenlabs" selected>ElevenLabs (tự nhiên)</option>
+            <option value="gtts">gTTS (nhanh, miễn phí)</option>
+        </select>
+        <select id="global-el-voice" style="padding:6px 10px;border-radius:6px;border:1.5px solid #ddd">
+            <option value="">Đang tải giọng...</option>
+        </select>
+        <label>Tốc độ giọng: <span id="global-spd-val">1.75</span>x
+            <input type="range" id="global-voice-speed" min="0" max="100" value="75" step="5" style="width:80px" oninput="document.getElementById('global-spd-val').textContent=((100+Number(this.value))/100).toFixed(2)">
+        </label>
+    </div>
+
     <!-- PDF Upload -->
     <div id="panel-pdf" class="panel">
         <form id="form-pdf" enctype="multipart/form-data">
@@ -219,26 +234,21 @@
 
     <!-- Shopee Batch -->
     <div id="panel-batch" class="panel">
-        <p style="font-size:.85em;color:#666;margin-bottom:12px">Dán nhiều link Shopee (mỗi dòng 1 link) hoặc dùng bookmarklet trên trang tìm kiếm Shopee</p>
-        <textarea id="batch-urls" rows="6" placeholder="https://shopee.vn/product-1-i.123.456&#10;https://shopee.vn/product-2-i.789.012&#10;https://shopee.vn/product-3-i.345.678" style="width:100%;padding:10px;border:1.5px solid #ddd;border-radius:8px;font-size:.9em;font-family:monospace"></textarea>
+        <p style="font-size:.85em;color:#666;margin-bottom:12px">Dán nhiều link Shopee (mỗi dòng 1 link). Thêm link affiliate sau dấu phẩy nếu có.</p>
+        <textarea id="batch-urls" rows="6" placeholder="https://shopee.vn/product-1-i.123.456 , https://s.shopee.vn/abc123&#10;https://shopee.vn/product-2-i.789.012 , https://s.shopee.vn/def456&#10;https://shopee.vn/product-3-i.345.678" style="width:100%;padding:10px;border:1.5px solid #ddd;border-radius:8px;font-size:.9em;font-family:monospace"></textarea>
+        <p style="font-size:.8em;color:#999;margin-top:4px">Format: <code>link_shopee , link_affiliate</code> — link affiliate là tuỳ chọn</p>
         <div style="display:flex;gap:12px;margin-top:12px;align-items:center;flex-wrap:wrap">
-            <button onclick="pasteBatchFromShopee()" class="btn" style="padding:8px 16px;font-size:.9em;background:#16213e">📋 Dán từ Shopee</button>
             <label style="font-size:.85em">Đối tượng:
                 <select id="batch-audience" onchange="document.getElementById('batch-custom-persona').style.display=this.value==='custom'?'block':'none'" style="padding:6px 10px;border-radius:6px;border:1.5px solid #ddd;font-size:.85em">
                     <option value="auto" selected>🤖 Tự động (2 personas/SP)</option>
                     <option value="custom">✏️ Tự nhập...</option>
-                    {% for key, val in audiences.items() %}
-                    <option value="{{ key }}">{{ val.name }}</option>
-                    {% endfor %}
-                </select>
-            </label>
-            <label style="font-size:.85em">🗣️ Giọng:
-                <select id="batch-voice" style="padding:6px 10px;border-radius:6px;border:1.5px solid #ddd;font-size:.85em">
-                    <option value="gtts">gTTS (nhanh)</option>
                 </select>
             </label>
             <label style="font-size:.85em">📝 TikTok: <span id="batch-wc-val">150</span> từ
                 <input type="range" id="batch-word-count" min="50" max="200" value="150" step="10" style="width:80px" oninput="document.getElementById('batch-wc-val').textContent=this.value">
+            </label>
+            <label style="font-size:.85em">📘 Facebook: <span id="batch-wc-fb-val">200</span> từ
+                <input type="range" id="batch-word-count-fb" min="100" max="400" value="200" step="10" style="width:80px" oninput="document.getElementById('batch-wc-fb-val').textContent=this.value">
             </label>
         </div>
         <div style="display:flex;gap:12px;margin-top:8px;align-items:center;flex-wrap:wrap">
@@ -265,6 +275,35 @@
 </div>
 
 <script>
+// === Global Voice Settings ===
+function onGlobalVoiceChange() {
+    var sel = document.getElementById('global-voice-type');
+    document.getElementById('global-el-voice').style.display = sel.value === 'elevenlabs' ? '' : 'none';
+}
+function getGlobalVoice() {
+    var type = document.getElementById('global-voice-type')?.value || 'elevenlabs';
+    var voiceId = document.getElementById('global-el-voice')?.value || '';
+    var speed = document.getElementById('global-voice-speed')?.value || '75';
+    return { type: type, voiceId: voiceId, speed: speed };
+}
+(function loadGlobalVoices() {
+    fetch('/api/elevenlabs-voices').then(r => r.json()).then(d => {
+        var sel = document.getElementById('global-el-voice');
+        var defaultId = '{{ default_voice_id }}';
+        sel.innerHTML = '';
+        (d.voices || []).forEach(v => {
+            var opt = document.createElement('option');
+            opt.value = v.id;
+            opt.textContent = v.name + (v.category ? ' (' + v.category + ')' : '');
+            if (v.id === defaultId) opt.selected = true;
+            sel.appendChild(opt);
+        });
+        if (!sel.value && sel.options.length) sel.selectedIndex = 0;
+    }).catch(() => {
+        document.getElementById('global-el-voice').innerHTML = '<option value="">Không tải được</option>';
+    });
+})();
+
 function switchTab(name) {
     // Remove active from all tabs and panels
     var tabs = document.getElementsByClassName('tab');
@@ -1499,8 +1538,15 @@ async function pasteBatchFromShopee() {
 
 async function startBatchReview() {
     var textarea = document.getElementById('batch-urls');
-    var urls = textarea.value.trim().split('\n').map(u => u.trim()).filter(u => u.startsWith('http'));
-    if (urls.length === 0) { alert('Nhập ít nhất 1 link Shopee!'); return; }
+    var lines = textarea.value.trim().split('\n').map(l => l.trim()).filter(l => l);
+    var urlPairs = lines.map(function(line) {
+        var parts = line.split(',').map(s => s.trim());
+        return { url: parts[0], affiliate: parts[1] || '' };
+    }).filter(p => p.url.startsWith('http'));
+    if (urlPairs.length === 0) { alert('Nhập ít nhất 1 link Shopee!'); return; }
+    var urls = urlPairs.map(p => p.url);
+    var affiliateMap = {};
+    urlPairs.forEach(function(p) { if (p.affiliate) affiliateMap[p.url] = p.affiliate; });
     var audience = document.getElementById('batch-audience').value;
     var customAudience = '';
     if (audience === 'custom') {
@@ -1513,11 +1559,12 @@ async function startBatchReview() {
     var btn = document.getElementById('btn-batch-review');
     var progress = document.getElementById('batch-progress');
     var results = document.getElementById('batch-results');
-    var batchVoice = document.getElementById('batch-voice')?.value || 'gtts';
-    var voiceType = batchVoice.startsWith('elevenlabs:') ? 'elevenlabs' : 'gtts';
-    var voiceId = batchVoice.startsWith('elevenlabs:') ? batchVoice.split(':')[1] : '';
+    var batchVoice = getGlobalVoice();
+    var voiceType = batchVoice.type;
+    var voiceId = batchVoice.voiceId;
     var wordCount = document.getElementById('batch-word-count')?.value || '150';
-    batchLog('Voice: ' + batchVoice + ', Word count: ' + wordCount);
+    var wordCountFb = document.getElementById('batch-word-count-fb')?.value || '200';
+    batchLog('Voice: ' + voiceType + (voiceId ? ':' + voiceId : '') + ', Word count: ' + wordCount);
     btn.disabled = true;
     results.innerHTML = '';
 
@@ -1528,9 +1575,11 @@ async function startBatchReview() {
         try {
             var fd = new FormData();
             fd.append('urls', urls.join('\n'));
+            fd.append('affiliate_urls', JSON.stringify(affiliateMap));
             fd.append('voice_type', voiceType);
             fd.append('voice_id', voiceId);
             fd.append('word_count', wordCount);
+            fd.append('word_count_fb', wordCountFb);
             batchLog('Calling /batch-personas...');
             var resp = await fetch('/batch-personas', { method: 'POST', body: fd });
             if (!resp.ok) throw new Error('Lỗi server: ' + resp.status);
@@ -1578,9 +1627,11 @@ async function startBatchReview() {
         try {
             var fd = new FormData();
             fd.append('url', urls[i]);
+            if (affiliateMap[urls[i]]) fd.append('affiliate_url', affiliateMap[urls[i]]);
             fd.append('audience', audience);
             if (customAudience) fd.append('custom_audience', customAudience);
             fd.append('word_count_tk', wordCount);
+            fd.append('word_count_fb', wordCountFb);
             fd.append('voice_type', voiceType);
             if (voiceId) fd.append('elevenlabs_voice_id', voiceId);
             var resp = await fetch('/from-url', { method: 'POST', body: fd });
