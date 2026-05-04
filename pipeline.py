@@ -20,8 +20,8 @@ class PipelineInput:
     audience: str = "phu-huynh-lop-5"
     custom_audience: dict | None = None
     affiliate_url: str = ""
-    word_count_fb: int = 200
-    word_count_tk: int = 150
+    word_count_fb: int = 150
+    word_count_tk: int = 120
     image_urls: list[str] = field(default_factory=list)
     voice_type: str = "elevenlabs"
     elevenlabs_voice_id: str = "T4jrQr9x0Y24833yKCWR"  # Thuý Hà V1
