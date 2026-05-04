@@ -268,7 +268,8 @@ async function startBatchReview() {
     for (var i = 0; i < products.length; i++) {
         var p = products[i];
         try {
-            var slug = decodeURIComponent(p.url.split('shopee.vn/')[1] || '').split('-i.')[0].replace(/-/g, ' ');
+            var imported = (window._importedProducts || []).find(function(ip) { return ip.url === p.url; });
+            var slug = (imported && imported.title && imported.title.length > 5) ? imported.title : decodeURIComponent(p.url.split('shopee.vn/')[1] || '').split('-i.')[0].replace(/-/g, ' ');
             var fd = new FormData();
             fd.append('title', slug);
             var resp = await fetch('/suggest-personas', { method: 'POST', body: fd });
