@@ -68,8 +68,14 @@ def build_review_prompt(
         "facebook": f"Bài viết Facebook ĐÚNG {word_count} từ (KHÔNG được vượt quá), có emoji, chia đoạn rõ ràng, kết thúc bằng CTA mua sản phẩm. Viết theo góc nhìn KOL/người dùng thực sự đã trải nghiệm sản phẩm, KHÔNG viết như shop bán hàng. Dùng ngôi thứ nhất (mình/tôi), chia sẻ cảm nhận cá nhân, kể trải nghiệm thực tế.",
         "tiktok": f"""Script TikTok ĐÚNG {word_count} từ (KHÔNG được vượt quá, KHÔNG tính audio tag trong []). Viết dạng văn nói tự nhiên, KHÔNG dùng timestamp như [0-3s]. Mở đầu bằng hook gây tò mò, ngắn gọn, có nhịp điệu. Viết như KOL đang nói chuyện với người xem, chia sẻ trải nghiệm cá nhân. KHÔNG viết như quảng cáo hay shop bán hàng.
 
-Chèn 3-4 audio tag [excited], [laughs], [gasps], [curious] vào script tại điểm chuyển cảm xúc. KHÔNG tính vào số từ. Dùng dấu … để tạo khoảng dừng, CHỮ IN HOA để nhấn mạnh.
-Ví dụ: '[curious] Mà khoan… các bạn có biết không? [gasps] Sản phẩm này ĐỈNH thật sự! [laughs]'""",
+GIỌNG NÓI (KHÔNG tính vào số từ):
+Chèn 4-6 audio tag vào script. Kết hợp tag + dấu câu cho hiệu ứng mạnh.
+- Cảm xúc: [excited], [surprised], [curious], [happy], [thoughtful], [whispers], [sarcastic], [mischievously]
+- Phi ngôn ngữ: [laughs], [sighs], [gasps], [chuckles], [exhales], [snorts]
+- Dấu … tạo khoảng dừng: "Và kết quả là…"
+- CHỮ IN HOA nhấn mạnh: "THỰC SỰ hay"
+- Kết hợp tag + dấu câu: "[curious] Mà khoan… các bạn có BIẾT không? [gasps] Sản phẩm này ĐỈNH! [laughs]"
+""",
     }
 
     ratings_context = ""
