@@ -222,27 +222,28 @@ async def generate_lifestyle_images(
 
     client = genai.Client(api_key=GEMINI_API_KEY)
 
-    # Pre-filter product images once (remove photos with human models)
-    clean_product_imgs = filter_product_images(product_images, client)
-
     img_dir = output_path(ts, "ai_images")
     img_dir.mkdir(parents=True, exist_ok=True)
 
     paths = []
     for i, scene in enumerate(scenes):
         try:
-            # Build edit request — KOL photo + TEXT description only
-            # Do NOT send product photos here — Gemini confuses product models with KOL
+            # Build edit request — product images (user-ordered: first images are product-only) + KOL
             contents = []
 
-            # Send clean product photos (no models) + text description
-            for cp in clean_product_imgs[:2]:
-                try:
-                    contents.append(Image.open(cp))
-                except Exception:
-                    pass
-            if clean_product_imgs:
-                contents.append(f"PRODUCT PHOTOS above: show the product only (no people). Match its appearance exactly.")
+            # Send first 2 product images (user puts product-only images first)
+            prod_count = 0
+            if product_images:
+                for img_url in product_images[:2]:
+                    local = str(Path(".") / img_url.lstrip("/"))
+                    if Path(local).exists():
+                        try:
+                            contents.append(Image.open(local))
+                            prod_count += 1
+                        except Exception:
+                            pass
+            if prod_count:
+                contents.append("PRODUCT PHOTOS above: match the product appearance exactly.")
 
             # Product described via text (from scene description step)
             if product_desc:

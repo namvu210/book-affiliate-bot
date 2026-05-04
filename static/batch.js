@@ -160,11 +160,18 @@ function addFilesToCard(card, files) {
         if (!files[i].type.startsWith('image/')) continue;
         var file = files[i];
         card._files.push(file);
-        var idx = card._files.length - 1;
+        // Add AI divider after 3rd image
+        if (card._files.length === 4) {
+            var divider = document.createElement('div');
+            divider.className = 'ai-divider';
+            divider.style.cssText = 'width:2px;background:#7c3aed;align-self:stretch;border-radius:1px;margin:0 2px';
+            divider.title = '← Ảnh cho AI | Ảnh cho video →';
+            thumbs.appendChild(divider);
+        }
         var wrap = document.createElement('div');
         wrap.style.cssText = 'position:relative;display:inline-block';
         var img = document.createElement('img');
-        img.style.cssText = 'height:60px;border-radius:4px;object-fit:cover';
+        img.style.cssText = 'height:60px;border-radius:4px;object-fit:cover' + (card._files.length <= 3 ? ';border:2px solid #7c3aed' : '');
         img.src = URL.createObjectURL(file);
         var btn = document.createElement('button');
         btn.textContent = '✕';
@@ -174,6 +181,8 @@ function addFilesToCard(card, files) {
                 var fi = c._files.indexOf(fileRef);
                 if (fi >= 0) c._files.splice(fi, 1);
                 w.remove();
+                // Rebuild divider
+                _rebuildDivider(c);
             };
         })(card, wrap, file);
         wrap.appendChild(img);
@@ -181,6 +190,32 @@ function addFilesToCard(card, files) {
         thumbs.appendChild(wrap);
     }
     card.querySelector('.pc-dropzone').style.borderColor = '#4ecca3';
+    // Add label if first upload
+    if (!card.querySelector('.ai-label')) {
+        var label = document.createElement('div');
+        label.className = 'ai-label';
+        label.style.cssText = 'font-size:.75em;color:#7c3aed;margin-top:2px';
+        label.textContent = '🤖 3 ảnh đầu = tham chiếu cho AI | còn lại = video slideshow';
+        thumbs.parentElement.appendChild(label);
+    }
+}
+
+function _rebuildDivider(card) {
+    var thumbs = card.querySelector('.pc-thumbs');
+    // Remove old dividers and borders
+    thumbs.querySelectorAll('.ai-divider').forEach(function(d) { d.remove(); });
+    var wraps = thumbs.querySelectorAll('div[style*="position:relative"]');
+    wraps.forEach(function(w, i) {
+        var img = w.querySelector('img');
+        if (img) img.style.border = i < 3 ? '2px solid #7c3aed' : '';
+    });
+    // Re-add divider after 3rd
+    if (wraps.length > 3) {
+        var divider = document.createElement('div');
+        divider.className = 'ai-divider';
+        divider.style.cssText = 'width:2px;background:#7c3aed;align-self:stretch;border-radius:1px;margin:0 2px';
+        wraps[2].after(divider);
+    }
 }
 
 function getProductCards() {
