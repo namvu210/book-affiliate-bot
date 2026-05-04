@@ -248,35 +248,23 @@ async function startBatchReview() {
     var batchVoice = getGlobalVoice();
     var wordCount = document.getElementById('batch-word-count')?.value || '150';
     var wordCountFb = document.getElementById('batch-word-count-fb')?.value || '200';
-    var audience = document.getElementById('batch-audience').value;
-    var customAudience = '';
-    if (audience === 'custom') {
-        customAudience = JSON.stringify({
-            name: document.getElementById('batch-cp-name').value || 'Khách hàng',
-            tone: document.getElementById('batch-cp-tone').value || 'thân thiện',
-            focus: document.getElementById('batch-cp-focus').value || 'chất lượng sản phẩm',
-        });
-    }
     btn.disabled = true;
     results.innerHTML = '';
-    _batchState = { products: products, currentIdx: 0, results: [], voice: batchVoice, wordCount: wordCount, wordCountFb: wordCountFb, audience: audience, customAudience: customAudience, platforms: selectedPlatforms };
-    batchLog('Products: ' + products.length + ', Voice: ' + batchVoice.type + ', Audience: ' + audience);
+    _batchState = { products: products, currentIdx: 0, results: [], voice: batchVoice, wordCount: wordCount, wordCountFb: wordCountFb, platforms: selectedPlatforms };
+    batchLog('Products: ' + products.length + ', Voice: ' + batchVoice.type);
 
+    // Step 1: Suggest 2 personas per product, user picks 1
     progress.innerHTML = '<div style="font-size:.9em">⏳ Bước 1: Phân tích đối tượng khách hàng...</div>';
     for (var i = 0; i < products.length; i++) {
         var p = products[i];
         try {
             var slug = decodeURIComponent(p.url.split('shopee.vn/')[1] || '').split('-i.')[0].replace(/-/g, ' ');
-            if (audience === 'auto') {
-                var fd = new FormData();
-                fd.append('title', slug);
-                var resp = await fetch('/suggest-personas', { method: 'POST', body: fd });
-                var pdata = await resp.json();
-                p.personas = (pdata.personas || []).slice(0, 2);
-                batchLog('📦 ' + (i+1) + '. ' + slug.substring(0,40) + ' → ' + p.personas.map(x => x.name).join(', '));
-            } else {
-                p.personas = customAudience ? [JSON.parse(customAudience)] : [{name:'Khách hàng', tone:'thân thiện', focus:'chất lượng'}];
-            }
+            var fd = new FormData();
+            fd.append('title', slug);
+            var resp = await fetch('/suggest-personas', { method: 'POST', body: fd });
+            var pdata = await resp.json();
+            p.personas = (pdata.personas || []).slice(0, 2);
+            batchLog('📦 ' + (i+1) + '. ' + slug.substring(0,40) + ' → ' + p.personas.map(x => x.name).join(', '));
             if (!p.personas.length) p.personas = [{name:'Khách hàng phổ thông', tone:'thân thiện', focus:'chất lượng sản phẩm'}];
             p.title = slug;
         } catch(e) {
@@ -290,11 +278,11 @@ async function startBatchReview() {
     products.forEach(function(p, i) {
         html += '<div class="result-card" style="padding:12px;margin-bottom:8px">';
         html += '<strong>' + (i+1) + '. ' + (p.title||'').substring(0,60) + '</strong>';
-        html += '<div style="margin-top:6px">';
-        p.personas.forEach(function(per) {
-            html += '<span style="display:inline-block;background:#e8f0fe;padding:4px 10px;border-radius:12px;font-size:.85em;margin:2px 4px">🎯 ' + per.name + '</span>';
+        html += '<div style="margin-top:6px"><select id="persona-select-' + i + '" style="padding:6px 10px;border-radius:6px;border:1.5px solid #ddd;font-size:.85em">';
+        p.personas.forEach(function(per, j) {
+            html += '<option value="' + j + '">🎯 ' + per.name + ' (' + (per.focus||'') + ')</option>';
         });
-        html += '</div></div>';
+        html += '</select></div></div>';
     });
     html += '<div style="margin-top:12px"><button class="btn" onclick="batchStep2()" style="padding:10px 24px">✅ Tiếp tục → Tạo Review</button> ';
     html += '<button onclick="document.getElementById(\'btn-batch-review\').disabled=false;document.getElementById(\'batch-results\').innerHTML=\'\'" style="padding:10px 16px;background:#eee;border:1px solid #ddd;border-radius:8px;cursor:pointer">❌ Hủy</button></div>';
@@ -311,10 +299,13 @@ async function batchStep2() {
 
     for (var i = 0; i < products.length; i++) {
         var p = products[i];
-        progress.innerHTML = '<div style="font-size:.9em">⏳ Sản phẩm ' + (i+1) + '/' + products.length + '...</div>' +
+        // Get user-selected persona from Step 1 dropdown
+        var selIdx = parseInt(document.getElementById('persona-select-' + i)?.value || '0');
+        var persona = p.personas[selIdx] || p.personas[0];
+        p.selectedPersona = persona;
+        progress.innerHTML = '<div style="font-size:.9em">⏳ Sản phẩm ' + (i+1) + '/' + products.length + ' — ' + persona.name + '...</div>' +
             '<div style="background:#eee;border-radius:4px;height:8px;margin-top:6px"><div style="background:#e94560;height:8px;border-radius:4px;width:' + ((i+1)/products.length*100) + '%"></div></div>';
-        for (var j = 0; j < p.personas.length; j++) {
-            var persona = p.personas[j];
+        {
             batchLog('Generating: ' + (p.title||'').substring(0,30) + ' × ' + persona.name);
             try {
                 var fd = new FormData();

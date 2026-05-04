@@ -255,12 +255,6 @@
             <label style="font-size:.85em"><input type="checkbox" id="batch-plat-youtube"> ▶️ YouTube</label>
         </div>
         <div style="display:flex;gap:12px;margin-top:8px;align-items:center;flex-wrap:wrap">
-            <label style="font-size:.85em">Đối tượng:
-                <select id="batch-audience" onchange="document.getElementById('batch-custom-persona').style.display=this.value==='custom'?'block':'none'" style="padding:6px 10px;border-radius:6px;border:1.5px solid #ddd;font-size:.85em">
-                    <option value="auto" selected>🤖 Tự động (2 personas/SP)</option>
-                    <option value="custom">✏️ Tự nhập...</option>
-                </select>
-            </label>
             <label style="font-size:.85em">📝 TikTok: <span id="batch-wc-val">150</span> từ
                 <input type="range" id="batch-word-count" min="50" max="200" value="150" step="10" style="width:80px" oninput="document.getElementById('batch-wc-val').textContent=this.value">
             </label>
@@ -269,11 +263,6 @@
             </label>
         </div>
         <div style="display:flex;gap:12px;margin-top:8px;align-items:center;flex-wrap:wrap">
-            <div id="batch-custom-persona" style="display:none;padding:10px;background:#f8f9fa;border-radius:8px;flex:1">
-                <input type="text" id="batch-cp-name" placeholder="Nhóm KH (VD: Phụ huynh có con nhỏ)" style="margin-bottom:4px;width:100%">
-                <input type="text" id="batch-cp-tone" placeholder="Giọng văn (VD: thân thiện, dễ hiểu)" style="margin-bottom:4px;width:100%">
-                <input type="text" id="batch-cp-focus" placeholder="Trọng tâm (VD: giá rẻ, chất lượng)" style="width:100%">
-            </div>
             <button onclick="startBatchReview()" class="btn" style="padding:8px 20px;font-size:1em" id="btn-batch-review">🚀 Tạo Review hàng loạt</button>
         </div>
         <div id="batch-progress" style="margin-top:16px"></div>
