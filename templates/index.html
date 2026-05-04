@@ -236,7 +236,16 @@
     <div id="panel-batch" class="panel">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
             <p style="font-size:.85em;color:#666;margin:0">Thêm sản phẩm, kèm ảnh và link affiliate</p>
-            <button onclick="addProductCard()" class="btn" style="padding:6px 16px;font-size:.9em">➕ Thêm sản phẩm</button>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                <button onclick="addProductCard()" class="btn" style="padding:6px 16px;font-size:.9em">➕ Thêm sản phẩm</button>
+                <label class="btn" style="padding:6px 16px;font-size:.9em;background:#16213e;cursor:pointer">📥 Import Excel
+                    <input type="file" accept=".xlsx,.xls" style="display:none" onchange="importExcel(this)">
+                </label>
+                <label class="btn" style="padding:6px 16px;font-size:.9em;background:#0f3460;cursor:pointer">📁 Chọn thư mục ảnh
+                    <input type="file" webkitdirectory style="display:none" onchange="importImageFolder(this)">
+                </label>
+                <span id="import-status" style="font-size:.8em;color:#666"></span>
+            </div>
         </div>
         <div id="product-cards"></div>
         <div style="display:flex;gap:12px;margin-top:12px;align-items:center;flex-wrap:wrap">

@@ -324,6 +324,17 @@ async def publish_content(
     return {"results": [{"platform": r.platform, "success": r.success, "message": r.message, "post_id": r.post_id} for r in results]}
 
 
+@app.post("/import-excel")
+async def import_excel(file: UploadFile):
+    """Parse Excel file with product URLs and affiliate links."""
+    from importer import parse_product_excel
+    data = await file.read()
+    products = parse_product_excel(data)
+    if not products:
+        raise HTTPException(400, "Không tìm thấy sản phẩm trong file Excel")
+    return {"products": products}
+
+
 @app.post("/upload-video")
 async def upload_video(video: UploadFile):
     """Save an uploaded video file and return its path for publishing."""

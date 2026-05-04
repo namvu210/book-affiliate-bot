@@ -5,6 +5,101 @@ function batchLog(msg) {
     if (el) { el.textContent += new Date().toLocaleTimeString() + ' | ' + msg + '\n'; el.scrollTop = el.scrollHeight; }
 }
 
+// === Import from Excel + Image Folder ===
+
+async function importExcel(input) {
+    var file = input.files[0];
+    if (!file) return;
+    var status = document.getElementById('import-status');
+    status.textContent = '⏳ Đang đọc Excel...';
+    try {
+        var fd = new FormData();
+        fd.append('file', file);
+        var resp = await fetch('/import-excel', { method: 'POST', body: fd });
+        if (!resp.ok) throw new Error((await resp.json()).detail || 'Lỗi');
+        var data = await resp.json();
+        var products = data.products || [];
+        // Clear existing cards and create new ones
+        document.getElementById('product-cards').innerHTML = '';
+        _cardId = 0;
+        products.forEach(function(p) { addProductCard(p.url, p.affiliate); });
+        // Store titles for image matching
+        window._importedProducts = products;
+        status.textContent = '✅ ' + products.length + ' sản phẩm từ Excel. Chọn thư mục ảnh để tự động gán.';
+    } catch(e) {
+        status.textContent = '❌ ' + e.message;
+    }
+    input.value = '';
+}
+
+function importImageFolder(input) {
+    var files = Array.from(input.files);
+    if (!files.length) return;
+    var status = document.getElementById('import-status');
+
+    // Group files by subfolder
+    var folders = {};
+    files.forEach(function(f) {
+        if (!f.type.startsWith('image/')) return;
+        var parts = f.webkitRelativePath.split('/');
+        if (parts.length < 2) return;
+        var folder = parts[1] || parts[0]; // first subfolder name
+        if (!folders[folder]) folders[folder] = [];
+        folders[folder].push(f);
+    });
+
+    var folderNames = Object.keys(folders);
+    if (!folderNames.length) {
+        status.textContent = '❌ Không tìm thấy ảnh trong thư mục';
+        input.value = '';
+        return;
+    }
+
+    // Match folders to product cards by fuzzy title matching
+    var cards = document.querySelectorAll('[id^="pcard-"]');
+    var matched = 0;
+    cards.forEach(function(card) {
+        var url = card.querySelector('.pc-url')?.value || '';
+        var title = (window._importedProducts || []).find(function(p) { return p.url === url; })?.title || '';
+        if (!title) {
+            // Extract from URL
+            try { title = decodeURIComponent(url.split('shopee.vn/')[1] || '').split('-i.')[0].replace(/-/g, ' '); } catch(e) {}
+        }
+        if (!title) return;
+
+        // Find best matching folder
+        var bestFolder = null;
+        var bestScore = 0;
+        folderNames.forEach(function(fn) {
+            var score = _fuzzyMatch(title.toLowerCase(), fn.toLowerCase());
+            if (score > bestScore) { bestScore = score; bestFolder = fn; }
+        });
+
+        if (bestFolder && bestScore > 0.3) {
+            addFilesToCard(card, folders[bestFolder]);
+            matched++;
+            // Remove matched folder so it's not reused
+            var idx = folderNames.indexOf(bestFolder);
+            if (idx >= 0) folderNames.splice(idx, 1);
+        }
+    });
+
+    status.textContent = '✅ Gán ảnh cho ' + matched + '/' + cards.length + ' sản phẩm (' + Object.keys(folders).length + ' thư mục)';
+    input.value = '';
+}
+
+function _fuzzyMatch(a, b) {
+    // Simple word overlap score
+    var wordsA = a.split(/\s+/).filter(function(w) { return w.length > 1; });
+    var wordsB = b.split(/\s+/).filter(function(w) { return w.length > 1; });
+    if (!wordsA.length || !wordsB.length) return 0;
+    var matches = 0;
+    wordsA.forEach(function(wa) {
+        if (wordsB.some(function(wb) { return wb.includes(wa) || wa.includes(wb); })) matches++;
+    });
+    return matches / Math.max(wordsA.length, wordsB.length);
+}
+
 // === Product Cards ===
 var _cardId = 0;
 function addProductCard(url, affiliate) {
