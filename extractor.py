@@ -66,8 +66,9 @@ async def extract_from_shopee(url: str) -> BookInfo:
     if 's.shopee.vn/' in url and '-i.' not in url:
         try:
             r = httpx.head(url, follow_redirects=True, timeout=10)
-            if 'shopee.vn/' in str(r.url) and '-i.' in str(r.url):
-                url = str(r.url)
+            resolved = str(r.url).split('?')[0]  # strip tracking params
+            if 'shopee.vn/' in resolved:
+                url = resolved
         except Exception:
             pass
 
