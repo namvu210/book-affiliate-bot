@@ -68,35 +68,40 @@ function importImageFolder(input) {
     }
 
     // Match folders to product cards by fuzzy title matching
-    var cards = document.querySelectorAll('[id^="pcard-"]');
+    var cards = Array.from(document.querySelectorAll('[id^="pcard-"]'));
     var matched = 0;
-    cards.forEach(function(card) {
+
+    // Compute all match scores
+    var scores = [];
+    cards.forEach(function(card, ci) {
         var url = card.querySelector('.pc-url')?.value || '';
         var title = (window._importedProducts || []).find(function(p) { return p.url === url; })?.title || '';
         if (!title) {
-            // Extract from URL
             try { title = decodeURIComponent(url.split('shopee.vn/')[1] || '').split('-i.')[0].replace(/-/g, ' '); } catch(e) {}
         }
         if (!title) return;
-
-        // Find best matching folder
-        var bestFolder = null;
-        var bestScore = 0;
-        folderNames.forEach(function(fn) {
+        folderNames.forEach(function(fn, fi) {
             var score = _fuzzyMatch(title.toLowerCase(), fn.toLowerCase());
-            if (score > bestScore) { bestScore = score; bestFolder = fn; }
+            if (score > 0.2) scores.push({ ci: ci, fi: fi, score: score, card: card, folder: fn });
         });
+    });
 
-        if (bestFolder && bestScore > 0.3) {
-            addFilesToCard(card, folders[bestFolder]);
-            matched++;
-            // Remove matched folder so it's not reused
-            var idx = folderNames.indexOf(bestFolder);
-            if (idx >= 0) folderNames.splice(idx, 1);
-        }
+    // Sort by score descending, assign greedily
+    scores.sort(function(a, b) { return b.score - a.score; });
+    var usedCards = {};
+    var usedFolders = {};
+    scores.forEach(function(s) {
+        if (usedCards[s.ci] || usedFolders[s.fi]) return;
+        addFilesToCard(s.card, folders[s.folder]);
+        usedCards[s.ci] = true;
+        usedFolders[s.fi] = true;
+        matched++;
     });
 
     status.textContent = '✅ Gán ảnh cho ' + matched + '/' + cards.length + ' sản phẩm (' + Object.keys(folders).length + ' thư mục)';
+    // Debug: log matching details
+    console.log('Image folders found:', Object.keys(folders).map(function(k) { return k + ' (' + folders[k].length + ' files)'; }));
+    console.log('Match scores:', scores.slice(0, 10).map(function(s) { return s.folder + ' → card ' + s.ci + ' (score=' + s.score.toFixed(2) + ')'; }));
     input.value = '';
 }
 
