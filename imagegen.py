@@ -286,6 +286,12 @@ async def generate_lifestyle_images(
                     paths.append(f"{output_url(ts, 'ai_images')}/ai_{i}.png")
                     log.info(f"Generated image {i+1}/{len(scenes)} ({len(part.inline_data.data)} bytes)")
                     break
+            else:
+                # No image in response — log what we got
+                parts = result.candidates[0].content.parts if result.candidates and result.candidates[0].content else []
+                text_parts = [p.text for p in parts if hasattr(p, 'text') and p.text]
+                finish = getattr(result.candidates[0], 'finish_reason', 'unknown') if result.candidates else 'no candidates'
+                log.warning(f"Image {i+1}: no image returned. Finish: {finish}. Text: {'; '.join(text_parts)[:200]}")
         except Exception as e:
             log.warning(f"Image {i+1} failed: {type(e).__name__}: {e}")
     return paths
