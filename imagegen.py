@@ -155,6 +155,31 @@ def _detect_end_user(product_title: str, persona_name: str) -> dict:
         return {"same_person": True, "end_user": persona_name}
 
 
+def filter_product_images(product_images: list[str], client) -> list[str]:
+    """Filter out product photos containing human models. Returns paths without people."""
+    clean = []
+    for img_url in (product_images or [])[:6]:
+        local = str(Path(".") / img_url.lstrip("/"))
+        if not Path(local).exists():
+            continue
+        try:
+            img = Image.open(local)
+            resp = client.models.generate_content(
+                model=SCENE_MODEL,
+                contents=[img, "Does this image contain a person or human model? Answer ONLY 'yes' or 'no'."],
+                config=types.GenerateContentConfig(max_output_tokens=5),
+            )
+            has_person = 'yes' in resp.text.strip().lower()
+            if not has_person:
+                clean.append(local)
+                log.info(f"Product image {img_url[-30:]}: no person → included")
+            else:
+                log.info(f"Product image {img_url[-30:]}: has person → excluded")
+        except Exception:
+            pass
+    return clean
+
+
 async def generate_lifestyle_images(
     product_title: str,
     persona: dict,
@@ -196,6 +221,10 @@ async def generate_lifestyle_images(
         return []
 
     client = genai.Client(api_key=GEMINI_API_KEY)
+
+    # Pre-filter product images once (remove photos with human models)
+    clean_product_imgs = filter_product_images(product_images, client)
+
     img_dir = output_path(ts, "ai_images")
     img_dir.mkdir(parents=True, exist_ok=True)
 
@@ -205,34 +234,6 @@ async def generate_lifestyle_images(
             # Build edit request — KOL photo + TEXT description only
             # Do NOT send product photos here — Gemini confuses product models with KOL
             contents = []
-
-            # Pre-filter: find product photos WITHOUT human models
-            clean_product_imgs = []
-            if product_images and i == 0:  # only filter once on first scene
-                for img_url in product_images[:6]:
-                    local = str(Path(".") / img_url.lstrip("/"))
-                    if Path(local).exists():
-                        try:
-                            img = Image.open(local)
-                            resp = client.models.generate_content(
-                                model=SCENE_MODEL,
-                                contents=[img, "Does this image contain a person or human model? Answer ONLY 'yes' or 'no'."],
-                                config=types.GenerateContentConfig(max_output_tokens=5),
-                            )
-                            has_person = 'yes' in resp.text.strip().lower()
-                            if not has_person:
-                                clean_product_imgs.append(local)
-                                log.info(f"Product image {img_url[-30:]}: no person → included")
-                            else:
-                                log.info(f"Product image {img_url[-30:]}: has person → excluded")
-                        except Exception:
-                            pass
-                # Cache for subsequent scenes
-                if not hasattr(generate_lifestyle_images, '_clean_cache'):
-                    generate_lifestyle_images._clean_cache = {}
-                generate_lifestyle_images._clean_cache[ts] = clean_product_imgs
-            else:
-                clean_product_imgs = getattr(generate_lifestyle_images, '_clean_cache', {}).get(ts, [])
 
             # Send clean product photos (no models) + text description
             for cp in clean_product_imgs[:2]:
