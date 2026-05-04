@@ -69,3 +69,53 @@ async def _search_jamendo(search: str, refresh: bool) -> dict:
             return {"tracks": tracks, "categories": CATEGORIES, "source": "jamendo"}
     except Exception as e:
         return {"tracks": [], "categories": CATEGORIES, "error": str(e)[:100]}
+
+
+GENRE_KEYWORDS = {
+    "happy": ["trẻ em", "bé", "mầm non", "thiếu nhi", "đồ chơi"],
+    "acoustic": ["sách", "book", "học", "giáo dục"],
+    "lofi": ["thời trang", "áo", "quần", "váy", "giày"],
+    "corporate": ["công nghệ", "laptop", "điện thoại", "tai nghe"],
+    "piano": ["mỹ phẩm", "skincare", "serum", "kem"],
+}
+
+
+def get_background_music(product_title: str = "") -> str | None:
+    """Pick genre by product keywords, fetch/cache from Freesound. Returns local path or None."""
+    from pathlib import Path
+    music_dir = Path(__file__).parent / "music"
+    music_dir.mkdir(exist_ok=True)
+
+    genre = "lofi"
+    if product_title:
+        t = product_title.lower()
+        for g, keywords in GENRE_KEYWORDS.items():
+            if any(w in t for w in keywords):
+                genre = g
+                break
+
+    cached = list(music_dir.glob(f"{genre}_*.mp3"))
+    if cached:
+        return str(random.choice(cached))
+
+    api_key = os.getenv("FREESOUND_API_KEY", "")
+    if not api_key:
+        return None
+    try:
+        r = httpx.get("https://freesound.org/apiv2/search/text/", params={
+            "token": api_key, "query": f"{genre} background",
+            "filter": "duration:[15 TO 60]",
+            "fields": "id,name,previews", "page_size": "5", "sort": "rating_desc",
+        }, timeout=10)
+        results = r.json().get("results", [])
+        if results:
+            url = random.choice(results).get("previews", {}).get("preview-hq-mp3", "")
+            if url:
+                audio = httpx.get(url, timeout=15, follow_redirects=True)
+                if audio.status_code == 200:
+                    cached_path = music_dir / f"{genre}_{random.randint(1000,9999)}.mp3"
+                    cached_path.write_bytes(audio.content)
+                    return str(cached_path)
+    except Exception:
+        pass
+    return None
