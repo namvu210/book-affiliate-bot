@@ -287,9 +287,23 @@ async function startBatchReview() {
             if (!p.personas.length) p.personas = [{name:'Khách hàng phổ thông', tone:'thân thiện', focus:'chất lượng sản phẩm'}];
             p.title = slug;
         } catch(e) {
+            // Retry once
+            try {
+                var fd2 = new FormData();
+                fd2.append('title', slug || p.url);
+                var resp2 = await fetch('/suggest-personas', { method: 'POST', body: fd2 });
+                var pdata2 = await resp2.json();
+                p.personas = (pdata2.personas || []).slice(0, 2);
+                if (p.personas.length) {
+                    batchLog('🔄 Retry OK for ' + (i+1));
+                    p.title = slug || p.url.substring(0, 50);
+                    continue;
+                }
+            } catch(e2) {}
             batchLog('❌ Persona failed for ' + (i+1) + ': ' + e.message);
-            p.personas = [{name:'Khách hàng phổ thông', tone:'thân thiện', focus:'chất lượng sản phẩm'}];
-            p.title = p.url.substring(0, 50);
+            p.personas = [];
+            p.personaFailed = true;
+            p.title = slug || p.url.substring(0, 50);
         }
     }
 
@@ -297,11 +311,18 @@ async function startBatchReview() {
     products.forEach(function(p, i) {
         html += '<div class="result-card" style="padding:12px;margin-bottom:8px">';
         html += '<strong>' + (i+1) + '. ' + (p.title||'').substring(0,60) + '</strong>';
-        html += '<div style="margin-top:6px"><select id="persona-select-' + i + '" style="padding:6px 10px;border-radius:6px;border:1.5px solid #ddd;font-size:.85em">';
-        p.personas.forEach(function(per, j) {
-            html += '<option value="' + j + '">🎯 ' + per.name + ' (' + (per.focus||'') + ')</option>';
-        });
-        html += '</select></div></div>';
+        if (p.personaFailed) {
+            html += '<div style="margin-top:6px;color:#e94560;font-size:.85em">⚠️ Không thể gợi ý đối tượng (LLM lỗi). ';
+            html += '<button class="btn" onclick="retryPersona(' + i + ')" style="padding:3px 10px;font-size:.85em">🔄 Thử lại</button></div>';
+            html += '<input type="text" id="persona-manual-' + i + '" placeholder="Hoặc nhập tên đối tượng (VD: Phụ nữ văn phòng)" style="margin-top:4px;padding:6px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:.85em;width:100%">';
+        } else {
+            html += '<div style="margin-top:6px"><select id="persona-select-' + i + '" style="padding:6px 10px;border-radius:6px;border:1.5px solid #ddd;font-size:.85em">';
+            p.personas.forEach(function(per, j) {
+                html += '<option value="' + j + '">🎯 ' + per.name + ' (' + (per.focus||'') + ')</option>';
+            });
+            html += '</select></div>';
+        }
+        html += '</div>';
     });
     html += '<div style="margin-top:12px"><button class="btn" onclick="batchStep2()" style="padding:10px 24px">✅ Tiếp tục → Tạo Review</button> ';
     html += '<button onclick="document.getElementById(\'btn-batch-review\').disabled=false;document.getElementById(\'batch-results\').innerHTML=\'\'" style="padding:10px 16px;background:#eee;border:1px solid #ddd;border-radius:8px;cursor:pointer">❌ Hủy</button></div>';
@@ -309,7 +330,52 @@ async function startBatchReview() {
     progress.innerHTML = '';
 }
 
+async function retryPersona(idx) {
+    var p = _batchState.products[idx];
+    if (!p) return;
+    try {
+        var fd = new FormData();
+        fd.append('title', p.title || p.url);
+        var resp = await fetch('/suggest-personas', { method: 'POST', body: fd });
+        var pdata = await resp.json();
+        p.personas = (pdata.personas || []).slice(0, 2);
+        if (p.personas.length) {
+            p.personaFailed = false;
+            var card = document.querySelectorAll('.result-card')[idx];
+            if (card) {
+                var div = card.querySelector('div[style*="color"]') || card.lastElementChild;
+                div.outerHTML = '<div style="margin-top:6px"><select id="persona-select-' + idx + '" style="padding:6px 10px;border-radius:6px;border:1.5px solid #ddd;font-size:.85em">' +
+                    p.personas.map(function(per, j) { return '<option value="' + j + '">🎯 ' + per.name + ' (' + (per.focus||'') + ')</option>'; }).join('') +
+                    '</select></div>';
+                var manual = card.querySelector('input[id^="persona-manual"]');
+                if (manual) manual.remove();
+            }
+            batchLog('🔄 Retry persona OK for ' + (idx+1));
+        } else {
+            alert('Vẫn không thể gợi ý. Nhập thủ công bên dưới.');
+        }
+    } catch(e) {
+        alert('Lỗi: ' + e.message);
+    }
+}
+
 async function batchStep2() {
+    // Resolve personas for failed products (from manual input)
+    var products = _batchState.products;
+    products.forEach(function(p, i) {
+        if (p.personaFailed) {
+            var manual = document.getElementById('persona-manual-' + i)?.value?.trim();
+            if (manual) {
+                p.personas = [{name: manual, tone: 'thân thiện', focus: 'chất lượng sản phẩm'}];
+                p.personaFailed = false;
+            }
+        }
+    });
+    var noPersona = products.filter(function(p) { return !p.personas.length; });
+    if (noPersona.length) {
+        alert('⚠️ ' + noPersona.length + ' sản phẩm chưa có đối tượng. Nhập thủ công hoặc thử lại.');
+        return;
+    }
     var products = _batchState.products;
     var progress = document.getElementById('batch-progress');
     var results = document.getElementById('batch-results');
