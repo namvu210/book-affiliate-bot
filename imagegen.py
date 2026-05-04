@@ -292,6 +292,30 @@ async def generate_lifestyle_images(
                 text_parts = [p.text for p in parts if hasattr(p, 'text') and p.text]
                 finish = getattr(result.candidates[0], 'finish_reason', 'unknown') if result.candidates else 'no candidates'
                 log.warning(f"Image {i+1}: no image returned. Finish: {finish}. Text: {'; '.join(text_parts)[:200]}")
+                # Retry without KOL if safety-blocked (product-only flat lay)
+                if 'IMAGE_OTHER' in str(finish) or 'SAFETY' in str(finish):
+                    try:
+                        retry_contents = []
+                        if product_desc:
+                            retry_contents.append(f"Product: {product_desc}")
+                        retry_contents.append(
+                            f"Create a product photography flat-lay image: the product laid out on a clean surface "
+                            f"with soft lighting. Vietnamese aesthetic. No people, no models. "
+                            f"High quality product photography for social media."
+                        )
+                        retry_result = client.models.generate_content(
+                            model=EDIT_MODEL, contents=retry_contents,
+                            config=types.GenerateContentConfig(response_modalities=["IMAGE", "TEXT"]),
+                        )
+                        for rp in (retry_result.candidates[0].content.parts if retry_result.candidates and retry_result.candidates[0].content else []):
+                            if rp.inline_data:
+                                img_path = img_dir / f"ai_{i}.png"
+                                img_path.write_bytes(rp.inline_data.data)
+                                paths.append(f"{output_url(ts, 'ai_images')}/ai_{i}.png")
+                                log.info(f"Retry image {i+1}: flat-lay generated ({len(rp.inline_data.data)} bytes)")
+                                break
+                    except Exception as re:
+                        log.warning(f"Retry image {i+1} also failed: {re}")
         except Exception as e:
             log.warning(f"Image {i+1} failed: {type(e).__name__}: {e}")
     return paths
