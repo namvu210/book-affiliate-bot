@@ -124,7 +124,7 @@ def generate_tiktok_video(
             duration, fps, size, img_effect, img_style, zoom_ratio,
             subtitle_style, highlight_color, logo_img, logo_position,
             book_title, cta, show_intro, show_outro, intro_bg_path, outro_bg_path, persona_name,
-            preview_only,
+            preview_only, hook,
         )
 
 
@@ -134,7 +134,7 @@ def _render_pil_pipeline(
     duration, fps, size, img_effect, img_style, zoom_ratio,
     subtitle_style, highlight_color, logo_img, logo_position,
     book_title, cta, show_intro, show_outro, intro_bg_path, outro_bg_path, persona_name="",
-    preview_only=False,
+    preview_only=False, hook="",
 ) -> str:
     """PIL frame-by-frame pipeline — pipes frames directly to ffmpeg (no temp files)."""
     W, H = size
@@ -177,25 +177,31 @@ def _render_pil_pipeline(
             first_bg = p
         intro_img = _make_slide(first_bg or intro_bg_path, W, H, (15, 15, 35))
         d = ImageDraw.Draw(intro_img)
+        # Hook as main text (bold, attention-grabbing)
+        intro_text = hook or book_title
         tf = get_font(56, bold=True)
-        title_lines = wrap_text(strip_emoji(book_title), tf, W - 120, d)[:3]
-        persona_lines = []
-        if persona_name:
+        main_lines = wrap_text(strip_emoji(intro_text), tf, W - 120, d)[:3]
+        # Product title as subtitle (if hook is used, show title below)
+        sub_lines = []
+        if hook and book_title:
+            sf = get_font(32)
+            sub_lines = wrap_text(strip_emoji(book_title), sf, W - 120, d)[:2]
+        elif persona_name:
             sf = get_font(36)
-            persona_lines = wrap_text(strip_emoji(persona_name), sf, W - 120, d)[:2]
-        total_h = len(title_lines) * 72 + (len(persona_lines) * 48 + 16 if persona_lines else 0)
+            sub_lines = wrap_text(strip_emoji(persona_name), sf, W - 120, d)[:2]
+        total_h = len(main_lines) * 72 + (len(sub_lines) * 44 + 16 if sub_lines else 0)
         y = (H - total_h) // 2
-        for line in title_lines:
+        for line in main_lines:
             bbox = d.textbbox((0, 0), line, font=tf)
             d.text(((W - bbox[2] + bbox[0]) // 2, y), line, fill=(255, 255, 255), font=tf)
             y += 72
-        if persona_lines:
-            sf = get_font(36)
+        if sub_lines:
+            sf = get_font(32) if hook else get_font(36)
             y += 16
-            for line in persona_lines:
+            for line in sub_lines:
                 bbox = d.textbbox((0, 0), line, font=sf)
                 d.text(((W - bbox[2] + bbox[0]) // 2, y), line, fill=(255, 220, 100), font=sf)
-                y += 48
+                y += 44
         if logo_img:
             intro_img = paste_logo(intro_img, logo_img, logo_position)
         raw = intro_img.convert("RGB").tobytes()
