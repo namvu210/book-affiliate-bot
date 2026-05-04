@@ -283,6 +283,14 @@ async function startBatchReview() {
         try {
             var imported = (window._importedProducts || []).find(function(ip) { return ip.url === p.url; });
             var slug = (imported && imported.title && imported.title.length > 5) ? imported.title : decodeURIComponent(p.url.split('shopee.vn/')[1] || '').split('-i.')[0].replace(/-/g, ' ');
+            // If slug is too short/meaningless, fetch real title from AffiPad
+            if (!slug || slug.length < 5 || slug.match(/^[a-zA-Z0-9]{5,15}$/)) {
+                try {
+                    var titleResp = await fetch('/fetch-product-title', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({url:p.url})});
+                    var titleData = await titleResp.json();
+                    if (titleData.title && titleData.title.length > 5) slug = titleData.title;
+                } catch(e) {}
+            }
             var fd = new FormData();
             fd.append('title', slug);
             var resp = await fetch('/suggest-personas', { method: 'POST', body: fd });
