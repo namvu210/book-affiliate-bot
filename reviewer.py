@@ -132,7 +132,7 @@ Trả về JSON với format:
   "hashtags": ["danh sách hashtag phù hợp — CHỈ đặt ở đây, KHÔNG trong social_post"],
   "hook": "Câu mở đầu gây chú ý (dùng cho video/reel)",
   "key_points": ["3-5 điểm nổi bật của sản phẩm"],
-  "cta": "Lời kêu gọi hành động"
+  "cta": "Lời kêu gọi hành động — PHẢI hướng dẫn người xem tìm link mua (VD: 'Link mua ở mô tả nhé!', 'Bấm link ở bio để mua nha!')"
 }}
 
 CHỈ trả về JSON, không giải thích thêm."""

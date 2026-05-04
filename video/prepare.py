@@ -132,7 +132,7 @@ async def render_video(inp: VideoInput) -> dict:
         social_post=platform_data.get("social_post", ""),
         hook=platform_data.get("hook", ""),
         key_points=platform_data.get("key_points", []),
-        cta=platform_data.get("cta", ""),
+        cta=platform_data.get("cta", "") or "🛒 Link mua ở mô tả nhé!",
         cover_image_path=cover_path, media_paths=media_paths,
         music_file=local_music,
         music_volume=max(0, min(50, inp.music_volume)) / 100,
