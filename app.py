@@ -24,6 +24,7 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 app = FastAPI(title="Product Affiliate Bot")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 app.mount("/output", StaticFiles(directory=OUTPUT_DIR), name="output")
+app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
 
