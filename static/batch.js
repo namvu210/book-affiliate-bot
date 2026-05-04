@@ -251,6 +251,10 @@ var _batchState = { products: [], currentIdx: 0, results: [] };
 async function startBatchReview() {
     var products = getProductCards();
     if (products.length === 0) { alert('Thêm ít nhất 1 sản phẩm!'); return; }
+    var noImages = products.filter(function(p) { return !p.files.length; });
+    if (noImages.length > 0) {
+        if (!confirm('⚠️ ' + noImages.length + ' sản phẩm chưa có ảnh. Video sẽ chỉ dùng ảnh AI (hoặc màn hình đen nếu AI thất bại).\n\nTiếp tục?')) return;
+    }
     var selectedPlatforms = [];
     if (document.getElementById('batch-plat-facebook').checked) selectedPlatforms.push('facebook');
     if (document.getElementById('batch-plat-tiktok').checked) selectedPlatforms.push('tiktok');
