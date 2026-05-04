@@ -62,6 +62,15 @@ def extract_from_pdf(file_path: str) -> BookInfo:
 
 async def extract_from_shopee(url: str) -> BookInfo:
     """Extract product info from Shopee URL."""
+    # Resolve short URLs (s.shopee.vn/xxx) to full product URLs
+    if 's.shopee.vn/' in url and '-i.' not in url:
+        try:
+            r = httpx.head(url, follow_redirects=True, timeout=10)
+            if 'shopee.vn/' in str(r.url) and '-i.' in str(r.url):
+                url = str(r.url)
+        except Exception:
+            pass
+
     title = _title_from_url(url)
 
     # If URL has no readable slug (e.g. /product/shopid/itemid), try AffiPad

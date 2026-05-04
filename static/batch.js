@@ -237,6 +237,11 @@ function getProductCards() {
     var products = [];
     cards.forEach(function(card) {
         var url = card.querySelector('.pc-url')?.value?.trim();
+        var aff = card.querySelector('.pc-aff')?.value?.trim() || '';
+        // If no product URL but has affiliate link, use affiliate as URL
+        if ((!url || !url.startsWith('http')) && aff && aff.startsWith('http')) {
+            url = aff;
+        }
         if (!url || !url.startsWith('http')) return;
         products.push({ url: url, affiliate: card.querySelector('.pc-aff')?.value?.trim() || '', files: card._files || [], aiFiles: card._aiPicks ? Array.from(card._aiPicks) : [] });
     });
