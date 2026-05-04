@@ -158,6 +158,10 @@ async def _add_audio(result: dict, ts: str, voice_type: str = "gtts", elevenlabs
         text = data.get("social_post", "")
         if not text:
             continue
+        # Append CTA so it's spoken at the end
+        cta = data.get("cta", "").strip()
+        if cta and cta not in text:
+            text = text.rstrip() + " " + cta
         suffix = f"{platform}.mp3"
         audio_path = str(output_path(ts, suffix))
         tasks.append(generate_audio(text, audio_path, voice_type=voice_type, elevenlabs_voice_id=elevenlabs_voice_id))
