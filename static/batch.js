@@ -391,7 +391,8 @@ async function batchStep3() {
     // Run with concurrency limit of 2
     var videoResults = [];
     var completed = 0;
-    async function runTask(task) {
+    async function runTask(task, retries) {
+        retries = retries || 0;
         try {
             var fd = new FormData();
             fd.append('review_json', JSON.stringify(task.review.data));
@@ -407,6 +408,10 @@ async function batchStep3() {
             batchLog('🎬 ' + task.review.persona.name + ' → ' + task.platform + ': ' + vdata.video_url);
             return { review: task.review, platform: task.platform, video_url: vdata.video_url, srt_url: vdata.srt_url };
         } catch(e) {
+            if (retries < 1) {
+                batchLog('⚠️ Retry video ' + task.platform + '...');
+                return runTask(task, retries + 1);
+            }
             batchLog('❌ Video ' + task.platform + ': ' + e.message);
             return { review: task.review, platform: task.platform, error: e.message };
         } finally {
