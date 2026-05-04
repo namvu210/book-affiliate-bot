@@ -67,19 +67,24 @@ async def process_product(inp: PipelineInput) -> PipelineResult:
     except Exception as e:
         log.warning(f"Affiliate failed (continuing): {e}")
 
-    # Step 3: Generate reviews — each platform independent
+    # Step 3: Generate reviews — platforms in parallel
+    import asyncio
+    from reviewer import generate_review
+    review_tasks = []
+    review_platforms = []
     for platform, wc in [("facebook", min(inp.word_count_fb, 300)), ("tiktok", min(inp.word_count_tk, 150))]:
         if platform not in inp.platforms:
             continue
-        try:
-            import asyncio
-            from reviewer import generate_review
-            review = await asyncio.to_thread(generate_review, book, inp.audience, platform, inp.custom_audience, wc)
-            result[platform] = review
+        review_tasks.append(asyncio.to_thread(generate_review, book, inp.audience, platform, inp.custom_audience, wc))
+        review_platforms.append(platform)
+    _fallback = {"social_post": "", "review": "", "hashtags": [], "hook": "", "key_points": [], "cta": ""}
+    for platform, outcome in zip(review_platforms, await asyncio.gather(*review_tasks, return_exceptions=True)):
+        if isinstance(outcome, Exception):
+            result[platform] = {**_fallback, "review": f"Error: {outcome}"}
+            log.warning(f"{platform} review failed (continuing): {outcome}")
+        else:
+            result[platform] = outcome
             log.info(f"{platform} review generated")
-        except Exception as e:
-            result[platform] = {"social_post": "", "review": f"Error: {e}", "hashtags": [], "hook": "", "key_points": [], "cta": ""}
-            log.warning(f"{platform} review failed (continuing): {e}")
 
     # Step 4: Audio — each platform independent
     try:
@@ -142,7 +147,10 @@ async def process_batch(inputs: list[PipelineInput]) -> list[PipelineResult]:
 
 
 async def _add_audio(result: dict, ts: str, voice_type: str = "gtts", elevenlabs_voice_id: str = "") -> dict:
-    """Generate voice narration for each platform's social_post."""
+    """Generate voice narration for each platform's social_post — in parallel."""
+    import asyncio
+    tasks = []
+    platforms = []
     for platform in ["facebook", "tiktok"]:
         data = result.get(platform)
         if not data:
@@ -152,8 +160,14 @@ async def _add_audio(result: dict, ts: str, voice_type: str = "gtts", elevenlabs
             continue
         suffix = f"{platform}.mp3"
         audio_path = str(output_path(ts, suffix))
-        await generate_audio(text, audio_path, voice_type=voice_type, elevenlabs_voice_id=elevenlabs_voice_id)
-        data["audio_url"] = output_url(ts, suffix)
+        tasks.append(generate_audio(text, audio_path, voice_type=voice_type, elevenlabs_voice_id=elevenlabs_voice_id))
+        platforms.append((platform, suffix))
+    outcomes = await asyncio.gather(*tasks, return_exceptions=True)
+    for (platform, suffix), outcome in zip(platforms, outcomes):
+        if isinstance(outcome, Exception):
+            log.warning(f"Audio {platform} failed: {outcome}")
+        else:
+            result[platform]["audio_url"] = output_url(ts, suffix)
     return result
 
 

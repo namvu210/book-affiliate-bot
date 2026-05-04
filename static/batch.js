@@ -208,31 +208,49 @@ async function batchStep3() {
     var progress = document.getElementById('batch-progress');
     var results = document.getElementById('batch-results');
     results.innerHTML = '<h3 style="margin-bottom:12px">⏳ Bước 3: Tạo Video...</h3>';
-    var videoResults = [];
 
+    // Build all video tasks
+    var tasks = [];
     for (var i = 0; i < reviews.length; i++) {
         var r = reviews[i];
-        progress.innerHTML = '<div style="font-size:.9em">⏳ Video ' + (i+1) + '/' + reviews.length + ' — ' + r.persona.name + '...</div>';
-        for (var platform of _batchState.platforms) {
-            try {
-                var fd = new FormData();
-                fd.append('review_json', JSON.stringify(r.data));
-                fd.append('platform', platform);
-                fd.append('aspect_ratio', '9:16');
-                fd.append('voice_speed', _batchState.voice.speed);
-                var resp = await fetch('/generate-video', { method: 'POST', body: fd });
-                if (!resp.ok) {
-                    var errData = await resp.json().catch(function() { return {}; });
-                    throw new Error(errData.detail || 'HTTP ' + resp.status);
-                }
-                var vdata = await resp.json();
-                videoResults.push({ review: r, platform: platform, video_url: vdata.video_url, srt_url: vdata.srt_url });
-                batchLog('🎬 ' + r.persona.name + ' → ' + platform + ': ' + vdata.video_url);
-            } catch(e) {
-                batchLog('❌ Video ' + platform + ': ' + e.message);
-                videoResults.push({ review: r, platform: platform, error: e.message });
-            }
+        for (var j = 0; j < _batchState.platforms.length; j++) {
+            tasks.push({ review: r, platform: _batchState.platforms[j] });
         }
+    }
+
+    // Run with concurrency limit of 2
+    var videoResults = [];
+    var completed = 0;
+    async function runTask(task) {
+        try {
+            var fd = new FormData();
+            fd.append('review_json', JSON.stringify(task.review.data));
+            fd.append('platform', task.platform);
+            fd.append('aspect_ratio', '9:16');
+            fd.append('voice_speed', _batchState.voice.speed);
+            var resp = await fetch('/generate-video', { method: 'POST', body: fd });
+            if (!resp.ok) {
+                var errData = await resp.json().catch(function() { return {}; });
+                throw new Error(errData.detail || 'HTTP ' + resp.status);
+            }
+            var vdata = await resp.json();
+            batchLog('🎬 ' + task.review.persona.name + ' → ' + task.platform + ': ' + vdata.video_url);
+            return { review: task.review, platform: task.platform, video_url: vdata.video_url, srt_url: vdata.srt_url };
+        } catch(e) {
+            batchLog('❌ Video ' + task.platform + ': ' + e.message);
+            return { review: task.review, platform: task.platform, error: e.message };
+        } finally {
+            completed++;
+            progress.innerHTML = '<div style="font-size:.9em">⏳ Video ' + completed + '/' + tasks.length + '...</div>' +
+                '<div style="background:#eee;border-radius:4px;height:8px;margin-top:6px"><div style="background:#e94560;height:8px;border-radius:4px;width:' + (completed/tasks.length*100) + '%"></div></div>';
+        }
+    }
+
+    // Process in batches of 2
+    for (var start = 0; start < tasks.length; start += 2) {
+        var batch = tasks.slice(start, start + 2).map(runTask);
+        var batchResults = await Promise.all(batch);
+        videoResults = videoResults.concat(batchResults);
     }
 
     var html = '<h3 style="margin-bottom:12px">📋 Bước 3: Video & Đăng bài</h3>';
