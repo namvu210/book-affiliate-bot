@@ -332,6 +332,22 @@ async def import_excel(file: UploadFile):
     products = parse_product_excel(data)
     if not products:
         raise HTTPException(400, "Không tìm thấy sản phẩm trong file Excel")
+    # Enrich unreadable titles via AffiPad
+    import httpx
+    api_key = os.getenv("AFFIPAD_API_KEY", "")
+    if api_key:
+        async with httpx.AsyncClient(timeout=10) as client:
+            for p in products:
+                if p["title"].startswith("product/") or len(p["title"]) < 5:
+                    try:
+                        resp = await client.post("https://api.affipad.com/v1/product-info",
+                            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                            json={"url": p["url"]})
+                        info = resp.json()
+                        if info.get("success"):
+                            p["title"] = info["data"]["productInfo"].get("name", p["title"])
+                    except Exception:
+                        pass
     return {"products": products}
 
 
