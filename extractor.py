@@ -74,8 +74,10 @@ async def extract_from_shopee(url: str) -> BookInfo:
 
     title = _title_from_url(url)
 
-    # If URL has no readable slug (e.g. /product/shopid/itemid), try AffiPad
-    if not title or title.startswith("product/") or len(title) < 5:
+    # If URL has no readable slug, try AffiPad
+    import re as _re
+    is_unreadable = not title or title.startswith("product/") or len(title) < 5 or bool(_re.search(r'/\d{5,}', title))
+    if is_unreadable:
         try:
             import os
             api_key = os.getenv("AFFIPAD_API_KEY", "")
