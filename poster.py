@@ -63,10 +63,12 @@ async def _post_facebook_reel(req: PostRequest) -> PostResult:
     if not Path(video_path).exists():
         return PostResult(platform="facebook", success=False, message=f"Video không tồn tại: {video_path}")
 
-    # Build caption — clean, no links (affiliate goes in comment)
+    # Build caption with affiliate link
     caption = req.caption
     if req.hashtags:
         caption += "\n\n" + " ".join(f"#{h.lstrip('#')}" for h in req.hashtags)
+    if req.affiliate_link:
+        caption += f"\n\n🛒 Mua ngay: {req.affiliate_link}"
 
     log.info(f"facebook: Caption length: {len(caption)}, hashtags: {len(req.hashtags)}, affiliate: {'yes' if req.affiliate_link else 'no'}")
 
