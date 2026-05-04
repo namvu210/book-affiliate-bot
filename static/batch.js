@@ -37,15 +37,27 @@ function importImageFolder(input) {
     if (!files.length) return;
     var status = document.getElementById('import-status');
 
-    // Group files by subfolder
+    // Group image files by product folder name
+    // Shopee Save structure: shopeesave_<date>/<product_name>/main_images/*.jpg
     var folders = {};
     files.forEach(function(f) {
         if (!f.type.startsWith('image/')) return;
         var parts = f.webkitRelativePath.split('/');
-        if (parts.length < 2) return;
-        var folder = parts[1] || parts[0]; // first subfolder name
-        if (!folders[folder]) folders[folder] = [];
-        folders[folder].push(f);
+        // Find product name: skip root folder (shopeesave_*), product name is next
+        var productName = null;
+        for (var i = 0; i < parts.length - 1; i++) {
+            if (parts[i].match(/^shopeesave/i)) continue;
+            if (parts[i].match(/^(main_images|variant_images|product_video)$/i)) break;
+            productName = parts[i];
+            break;
+        }
+        if (!productName) return;
+        // Prefer main_images, also accept variant_images, skip product_video
+        var subdir = parts.find(function(p) { return p.match(/^(main_images|variant_images)$/i); });
+        if (!subdir && parts.length >= 3) subdir = 'other'; // flat structure fallback
+        if (!subdir) return;
+        if (!folders[productName]) folders[productName] = [];
+        folders[productName].push(f);
     });
 
     var folderNames = Object.keys(folders);
