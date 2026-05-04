@@ -158,7 +158,7 @@ def generate_review(
         return generate_json(prompt)
     except (json.JSONDecodeError, RuntimeError) as e:
         err = str(e)
-        return {**_REVIEW_FALLBACK, "review": err, "social_post": err}
+        return {**_REVIEW_FALLBACK, "review": err}
 
 
 def generate_review_all_platforms(
