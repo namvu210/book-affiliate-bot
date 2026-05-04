@@ -367,7 +367,18 @@ async function batchStep2() {
     }
     var skipped = _batchState.products.length - products.length;
     if (skipped) batchLog('⚠️ Bỏ qua ' + skipped + ' sản phẩm không có đối tượng');
-    var products = _batchState.products;
+
+    // Read persona selections BEFORE replacing HTML
+    _batchState.products.forEach(function(p, i) {
+        var sel = document.getElementById('persona-select-' + i);
+        if (sel) {
+            var selIdx = parseInt(sel.value || '0');
+            p.selectedPersona = p.personas[selIdx] || p.personas[0];
+            batchLog('Persona ' + (i+1) + ': selected "' + p.selectedPersona.name + '" (index ' + selIdx + ')');
+        }
+    });
+
+    var products = _batchState.products.filter(function(p) { return p.personas && p.personas.length; });
     var progress = document.getElementById('batch-progress');
     var results = document.getElementById('batch-results');
     results.innerHTML = '<h3 style="margin-bottom:12px">⏳ Bước 2: Tạo Review...</h3>';
@@ -375,10 +386,8 @@ async function batchStep2() {
 
     for (var i = 0; i < products.length; i++) {
         var p = products[i];
-        // Get user-selected persona from Step 1 dropdown
-        var selIdx = parseInt(document.getElementById('persona-select-' + i)?.value || '0');
-        var persona = p.personas[selIdx] || p.personas[0];
-        p.selectedPersona = persona;
+        // Get user-selected persona (already read before HTML replaced)
+        var persona = p.selectedPersona || p.personas[0];
         progress.innerHTML = '<div style="font-size:.9em">⏳ Sản phẩm ' + (i+1) + '/' + products.length + ' — ' + persona.name + '...</div>' +
             '<div style="background:#eee;border-radius:4px;height:8px;margin-top:6px"><div style="background:#e94560;height:8px;border-radius:4px;width:' + ((i+1)/products.length*100) + '%"></div></div>';
         {
