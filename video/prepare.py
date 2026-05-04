@@ -66,7 +66,7 @@ async def render_video(inp: VideoInput) -> dict:
 
     # Fallback: product_images from review data
     if not media_paths and data.get("product_images"):
-        for img_url in data["product_images"][:4]:
+        for img_url in data["product_images"][:16]:
             local = str(Path(".") / img_url.lstrip("/"))
             if Path(local).exists():
                 media_paths.append(local)
