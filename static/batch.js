@@ -158,11 +158,27 @@ function addFilesToCard(card, files) {
     if (!card._files) card._files = [];
     for (var i = 0; i < files.length; i++) {
         if (!files[i].type.startsWith('image/')) continue;
-        card._files.push(files[i]);
+        var file = files[i];
+        card._files.push(file);
+        var idx = card._files.length - 1;
+        var wrap = document.createElement('div');
+        wrap.style.cssText = 'position:relative;display:inline-block';
         var img = document.createElement('img');
         img.style.cssText = 'height:60px;border-radius:4px;object-fit:cover';
-        img.src = URL.createObjectURL(files[i]);
-        thumbs.appendChild(img);
+        img.src = URL.createObjectURL(file);
+        var btn = document.createElement('button');
+        btn.textContent = '✕';
+        btn.style.cssText = 'position:absolute;top:-4px;right:-4px;background:#e94560;color:#fff;border:none;border-radius:50%;width:18px;height:18px;font-size:10px;cursor:pointer;line-height:18px;padding:0';
+        btn.onclick = (function(c, w, fileRef) {
+            return function() {
+                var fi = c._files.indexOf(fileRef);
+                if (fi >= 0) c._files.splice(fi, 1);
+                w.remove();
+            };
+        })(card, wrap, file);
+        wrap.appendChild(img);
+        wrap.appendChild(btn);
+        thumbs.appendChild(wrap);
     }
     card.querySelector('.pc-dropzone').style.borderColor = '#4ecca3';
 }
