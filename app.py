@@ -781,4 +781,7 @@ async def generate_video(
         outro_bg_url=outro_bg_url,
         pdf_path=pdf_path,
     )
-    return await render_video(inp)
+    result = await render_video(inp)
+    if result.get("error"):
+        raise HTTPException(400, result["error"])
+    return result

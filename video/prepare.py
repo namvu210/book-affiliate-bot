@@ -120,7 +120,11 @@ async def render_video(inp: VideoInput) -> dict:
         if Path(local).exists():
             outro_bg_path = local
 
-    # Render
+    # Render — check we have content
+    if not platform_data.get("social_post", "").strip():
+        return {"error": "Không có nội dung review để tạo video"}
+    if not audio_path or not Path(audio_path).exists():
+        return {"error": "Không có audio để tạo video"}
     video_path = str(output_path(ts, f"{inp.platform}.mp4"))
     generate_tiktok_video(
         audio_path=audio_path, output_path=video_path,
