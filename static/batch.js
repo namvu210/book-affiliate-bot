@@ -314,7 +314,6 @@ async function startBatchReview() {
         if (p.personaFailed) {
             html += '<div style="margin-top:6px;color:#e94560;font-size:.85em">⚠️ Không thể gợi ý đối tượng (LLM lỗi). ';
             html += '<button class="btn" onclick="retryPersona(' + i + ')" style="padding:3px 10px;font-size:.85em">🔄 Thử lại</button></div>';
-            html += '<input type="text" id="persona-manual-' + i + '" placeholder="Hoặc nhập tên đối tượng (VD: Phụ nữ văn phòng)" style="margin-top:4px;padding:6px 10px;border:1.5px solid #ddd;border-radius:6px;font-size:.85em;width:100%">';
         } else {
             html += '<div style="margin-top:6px"><select id="persona-select-' + i + '" style="padding:6px 10px;border-radius:6px;border:1.5px solid #ddd;font-size:.85em">';
             p.personas.forEach(function(per, j) {
@@ -360,22 +359,14 @@ async function retryPersona(idx) {
 }
 
 async function batchStep2() {
-    // Resolve personas for failed products (from manual input)
-    var products = _batchState.products;
-    products.forEach(function(p, i) {
-        if (p.personaFailed) {
-            var manual = document.getElementById('persona-manual-' + i)?.value?.trim();
-            if (manual) {
-                p.personas = [{name: manual, tone: 'thân thiện', focus: 'chất lượng sản phẩm'}];
-                p.personaFailed = false;
-            }
-        }
-    });
-    var noPersona = products.filter(function(p) { return !p.personas.length; });
-    if (noPersona.length) {
-        alert('⚠️ ' + noPersona.length + ' sản phẩm chưa có đối tượng. Nhập thủ công hoặc thử lại.');
+    // Skip products with no persona
+    var products = _batchState.products.filter(function(p) { return p.personas && p.personas.length; });
+    if (!products.length) {
+        alert('⚠️ Không có sản phẩm nào có đối tượng. Bấm 🔄 Thử lại hoặc quay lại sau.');
         return;
     }
+    var skipped = _batchState.products.length - products.length;
+    if (skipped) batchLog('⚠️ Bỏ qua ' + skipped + ' sản phẩm không có đối tượng');
     var products = _batchState.products;
     var progress = document.getElementById('batch-progress');
     var results = document.getElementById('batch-results');
