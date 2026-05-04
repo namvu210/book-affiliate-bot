@@ -125,6 +125,10 @@ async def render_video(inp: VideoInput) -> dict:
         return {"error": "Không có nội dung review để tạo video"}
     if not audio_path or not Path(audio_path).exists():
         return {"error": "Không có audio để tạo video"}
+
+    cta_val = platform_data.get("cta", "").strip() or "🛒 Link mua ở mô tả nhé!"
+    hook_val = platform_data.get("hook", "")
+    log.info(f"Video render: hook='{hook_val[:50]}', cta='{cta_val[:50]}', images={len(media_paths)}, intro={inp.show_intro}, outro={inp.show_outro}")
     video_path = str(output_path(ts, f"{inp.platform}.mp4"))
     generate_tiktok_video(
         audio_path=audio_path, output_path=video_path,
@@ -132,7 +136,7 @@ async def render_video(inp: VideoInput) -> dict:
         social_post=platform_data.get("social_post", ""),
         hook=platform_data.get("hook", ""),
         key_points=platform_data.get("key_points", []),
-        cta=platform_data.get("cta", "").strip() or "🛒 Link mua ở mô tả nhé!",
+        cta=cta_val,
         cover_image_path=cover_path, media_paths=media_paths,
         music_file=local_music,
         music_volume=max(0, min(50, inp.music_volume)) / 100,

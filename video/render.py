@@ -287,7 +287,7 @@ def _render_pil_pipeline(
         cmd.extend(["-filter_complex", f"[1:a]adelay={intro_delay_ms}|{intro_delay_ms}[a]", "-map", "0:v", "-map", "[a]"])
     else:
         cmd.extend(["-map", "0:v", "-map", "1:a"])
-    cmd.extend(["-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-shortest", output_path])
+    cmd.extend(["-c:v", "copy", "-c:a", "aac", "-b:a", "192k", output_path])
     proc = subprocess.run(cmd, capture_output=True, timeout=300)
     if proc.returncode != 0:
         raise RuntimeError(f"ffmpeg mux failed: {proc.stderr.decode()[-800:]}")
