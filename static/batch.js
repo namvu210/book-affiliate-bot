@@ -98,6 +98,16 @@ function importImageFolder(input) {
         matched++;
     });
 
+    // Fallback: assign remaining folders to remaining cards by position
+    if (matched < cards.length) {
+        var remainingFolders = folderNames.filter(function(_, fi) { return !usedFolders[fi]; });
+        var remainingCards = cards.filter(function(_, ci) { return !usedCards[ci]; });
+        for (var ri = 0; ri < Math.min(remainingCards.length, remainingFolders.length); ri++) {
+            addFilesToCard(remainingCards[ri], folders[remainingFolders[ri]]);
+            matched++;
+        }
+    }
+
     status.textContent = '✅ Gán ảnh cho ' + matched + '/' + cards.length + ' sản phẩm (' + Object.keys(folders).length + ' thư mục)';
     // Debug: log matching details
     console.log('Image folders found:', Object.keys(folders).map(function(k) { return k + ' (' + folders[k].length + ' files)'; }));
