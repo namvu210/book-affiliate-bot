@@ -98,7 +98,7 @@ async def _generate_elevenlabs(text: str, output_path: str, voice_id_override: s
     audio = client.text_to_speech.convert(
         voice_id=voice_id,
         text=text,
-        model_id="eleven_flash_v2_5",
+        model_id="eleven_v3",
         output_format="mp3_44100_128",
         language_code="vi",
     )
