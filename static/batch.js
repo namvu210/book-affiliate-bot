@@ -106,9 +106,16 @@ function importImageFolder(input) {
 }
 
 function _fuzzyMatch(a, b) {
-    // Simple word overlap score
-    var wordsA = a.split(/\s+/).filter(function(w) { return w.length > 1; });
-    var wordsB = b.split(/\s+/).filter(function(w) { return w.length > 1; });
+    // Normalize: underscores to spaces, strip Vietnamese diacritics
+    function norm(s) {
+        return s.replace(/_/g, ' ')
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D')
+            .toLowerCase();
+    }
+    var na = norm(a);
+    var nb = norm(b);
+    var wordsA = na.split(/\s+/).filter(function(w) { return w.length > 1; });
+    var wordsB = nb.split(/\s+/).filter(function(w) { return w.length > 1; });
     if (!wordsA.length || !wordsB.length) return 0;
     var matches = 0;
     wordsA.forEach(function(wa) {
