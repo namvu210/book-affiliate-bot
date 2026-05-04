@@ -166,33 +166,47 @@ function addProductCard(url, affiliate) {
 function addFilesToCard(card, files) {
     var thumbs = card.querySelector('.pc-thumbs');
     if (!card._files) card._files = [];
+    if (!card._aiPicks) card._aiPicks = new Set();
     for (var i = 0; i < files.length; i++) {
         if (!files[i].type.startsWith('image/')) continue;
         var file = files[i];
         card._files.push(file);
-        // Add AI divider after 3rd image
-        if (card._files.length === 4) {
-            var divider = document.createElement('div');
-            divider.className = 'ai-divider';
-            divider.style.cssText = 'width:2px;background:#7c3aed;align-self:stretch;border-radius:1px;margin:0 2px';
-            divider.title = '← Ảnh cho AI | Ảnh cho video →';
-            thumbs.appendChild(divider);
-        }
         var wrap = document.createElement('div');
-        wrap.style.cssText = 'position:relative;display:inline-block';
+        wrap.style.cssText = 'position:relative;display:inline-block;cursor:pointer';
         var img = document.createElement('img');
-        img.style.cssText = 'height:60px;border-radius:4px;object-fit:cover' + (card._files.length <= 3 ? ';border:2px solid #7c3aed' : '');
+        img.style.cssText = 'height:60px;border-radius:4px;object-fit:cover;border:2px solid transparent';
         img.src = URL.createObjectURL(file);
+        // Click to toggle AI reference selection
+        (function(c, w, im, fileRef) {
+            w.addEventListener('click', function(e) {
+                if (e.target.tagName === 'BUTTON') return; // don't toggle on remove click
+                if (c._aiPicks.has(fileRef)) {
+                    c._aiPicks.delete(fileRef);
+                    im.style.border = '2px solid transparent';
+                    w.querySelector('.ai-badge')?.remove();
+                } else if (c._aiPicks.size < 3) {
+                    c._aiPicks.add(fileRef);
+                    im.style.border = '2px solid #7c3aed';
+                    var badge = document.createElement('span');
+                    badge.className = 'ai-badge';
+                    badge.style.cssText = 'position:absolute;top:-4px;left:-4px;background:#7c3aed;color:#fff;font-size:9px;padding:1px 4px;border-radius:4px;z-index:3';
+                    badge.textContent = '🤖 AI';
+                    w.appendChild(badge);
+                }
+                _updateAiLabel(c);
+            });
+        })(card, wrap, img, file);
         var btn = document.createElement('button');
         btn.textContent = '✕';
-        btn.style.cssText = 'position:absolute;top:-4px;right:-4px;background:#e94560;color:#fff;border:none;border-radius:50%;width:18px;height:18px;font-size:10px;cursor:pointer;line-height:18px;padding:0';
+        btn.style.cssText = 'position:absolute;top:-4px;right:-4px;background:#e94560;color:#fff;border:none;border-radius:50%;width:18px;height:18px;font-size:10px;cursor:pointer;line-height:18px;padding:0;z-index:4';
         btn.onclick = (function(c, w, fileRef) {
-            return function() {
+            return function(e) {
+                e.stopPropagation();
                 var fi = c._files.indexOf(fileRef);
                 if (fi >= 0) c._files.splice(fi, 1);
+                c._aiPicks.delete(fileRef);
                 w.remove();
-                // Rebuild divider
-                _rebuildDivider(c);
+                _updateAiLabel(c);
             };
         })(card, wrap, file);
         wrap.appendChild(img);
@@ -200,33 +214,23 @@ function addFilesToCard(card, files) {
         thumbs.appendChild(wrap);
     }
     card.querySelector('.pc-dropzone').style.borderColor = '#4ecca3';
-    // Add label if first upload
-    if (!card.querySelector('.ai-label')) {
-        var label = document.createElement('div');
-        label.className = 'ai-label';
-        label.style.cssText = 'font-size:.75em;color:#7c3aed;margin-top:2px';
-        label.textContent = '🤖 3 ảnh đầu = tham chiếu cho AI | còn lại = video slideshow';
-        thumbs.parentElement.appendChild(label);
-    }
+    _updateAiLabel(card);
 }
 
-function _rebuildDivider(card) {
-    var thumbs = card.querySelector('.pc-thumbs');
-    // Remove old dividers and borders
-    thumbs.querySelectorAll('.ai-divider').forEach(function(d) { d.remove(); });
-    var wraps = thumbs.querySelectorAll('div[style*="position:relative"]');
-    wraps.forEach(function(w, i) {
-        var img = w.querySelector('img');
-        if (img) img.style.border = i < 3 ? '2px solid #7c3aed' : '';
-    });
-    // Re-add divider after 3rd
-    if (wraps.length > 3) {
-        var divider = document.createElement('div');
-        divider.className = 'ai-divider';
-        divider.style.cssText = 'width:2px;background:#7c3aed;align-self:stretch;border-radius:1px;margin:0 2px';
-        wraps[2].after(divider);
-    }
+function _updateAiLabel(card) {
+    var existing = card.querySelector('.ai-label');
+    if (existing) existing.remove();
+    var label = document.createElement('div');
+    label.className = 'ai-label';
+    label.style.cssText = 'font-size:.75em;color:#7c3aed;margin-top:2px';
+    var count = card._aiPicks ? card._aiPicks.size : 0;
+    label.textContent = count > 0
+        ? '🤖 ' + count + '/3 ảnh được chọn cho AI (click ảnh để chọn/bỏ)'
+        : '🤖 Click chọn tối đa 3 ảnh cho AI tham chiếu';
+    card.querySelector('.pc-thumbs').parentElement.appendChild(label);
 }
+
+function _rebuildDivider() {} // no-op, kept for compatibility
 
 function getProductCards() {
     var cards = document.querySelectorAll('[id^="pcard-"]');
@@ -234,7 +238,7 @@ function getProductCards() {
     cards.forEach(function(card) {
         var url = card.querySelector('.pc-url')?.value?.trim();
         if (!url || !url.startsWith('http')) return;
-        products.push({ url: url, affiliate: card.querySelector('.pc-aff')?.value?.trim() || '', files: card._files || [] });
+        products.push({ url: url, affiliate: card.querySelector('.pc-aff')?.value?.trim() || '', files: card._files || [], aiFiles: card._aiPicks ? Array.from(card._aiPicks) : [] });
     });
     return products;
 }
@@ -327,7 +331,10 @@ async function batchStep2() {
                 fd.append('word_count_tk', _batchState.wordCount);
                 fd.append('word_count_fb', _batchState.wordCountFb);
                 fd.append('platforms', _batchState.platforms.join(','));
-                for (var k = 0; k < p.files.length; k++) fd.append('media', p.files[k]);
+                // Send AI-picked images first (used as product reference), then rest
+                var aiSet = new Set(p.aiFiles);
+                p.aiFiles.forEach(function(f) { fd.append('media', f); });
+                p.files.forEach(function(f) { if (!aiSet.has(f)) fd.append('media', f); });
                 var resp = await fetch('/from-url', { method: 'POST', body: fd });
                 if (!resp.ok) throw new Error('Lỗi server');
                 var data = await resp.json();
