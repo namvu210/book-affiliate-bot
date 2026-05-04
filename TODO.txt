@@ -2,89 +2,94 @@ TODO - Product Affiliate Bot
 =============================
 Updated: 2026-05-04
 
-## DONE ✅ (May 3)
+## DONE ✅ (May 3-4)
+
+### Platform Integration
 - [x] TikTok OAuth via GitHub Pages callback relay
 - [x] TikTok video upload (Content Posting API, inbox/draft mode)
 - [x] YouTube Shorts upload (resumable upload, private mode)
 - [x] TikTok/YouTube/Facebook publish buttons in main UI + batch view
-- [x] Affiliate link flows to all platforms (FB comment, YT desc+comment, TT reminder)
-- [x] KOL expert persona in review prompts
-- [x] GitHub Pages landing page + privacy/terms for TikTok app review
+- [x] Affiliate link in FB description + YT description/comment + TT reminder
 - [x] TikTok app submitted for review
-- [x] Replace 37 print() with logging module
-- [x] Input validation on /publish endpoint
+- [x] GitHub Pages landing page + privacy/terms
+
+### Batch Mode
+- [x] Product cards UI (URL + affiliate + image drop zone)
+- [x] Step-by-step flow (personas → reviews → videos → publish)
+- [x] Platform selection checkboxes (skip unused platforms)
+- [x] 1 persona per product via dropdown (LLM suggests 2, user picks 1)
+- [x] Excel import (URL + affiliate columns)
+- [x] Image folder picker (Shopee Save structure, fuzzy + positional matching)
+- [x] Click-to-pick AI reference images (up to 3 per card)
+- [x] Affiliate-link-only support (resolve short URLs)
+- [x] AffiPad title enrichment for unreadable URLs
+- [x] Publish buttons with correct review data per video
+- [x] Retry on failed video generation
+- [x] Warning for products with no images
+- [x] Persona failure: auto-retry + retry button + skip
+
+### Video Quality
+- [x] Hook as intro text (not raw product title)
+- [x] Intro/outro always on, product image backgrounds
+- [x] CTA spoken at end of video (appended to TTS)
+- [x] CTA outro slide with fallback text
+- [x] All product images used in video (was limited to 4)
+- [x] Word counts: FB 150, TK 120 (faster pacing)
+- [x] Fix -shortest flag cutting off outro
+
+### AI & Voice
+- [x] KOL expert persona in review prompts
+- [x] User-ordered images for AI (no LLM pre-filter)
+- [x] AI image flat-lay retry on safety block
+- [x] ElevenLabs v3 with Vietnamese language_code
+- [x] Auto-fallback to gTTS on quota exceeded
+- [x] Audio tag prompt simplified (7 lines, full tag list)
+- [x] Error messages never reach TTS
+
+### Architecture
+- [x] Extract affiliate.py (from pipeline.py)
+- [x] Extract video/prepare.py (VideoInput + render_video)
+- [x] Merge music into music.py (get_background_music)
+- [x] Extract static/batch.js (from index.html)
+- [x] Delete dead ffmpeg pipeline (-211 lines)
+- [x] Poster adapter registry + shared helpers
+- [x] Extract filter_product_images (remove cache hack)
+- [x] pipeline.py: 500 → 236 lines
+- [x] render.py: 576 → 365 lines
+- [x] index.html: 1844 → 1518 lines
+
+### Code Quality
+- [x] Replace 37 print() with logging
+- [x] Input validation on /publish
 - [x] Async Gemini calls (asyncio.to_thread)
-- [x] Replace LLM music genre picker with keyword matching
-- [x] Global voice settings (type, voice ID, speed) consolidated in UI
-- [x] Batch mode: product cards UI (URL + affiliate + image drop zone per product)
-- [x] Batch mode: step-by-step flow (personas → reviews → videos → publish)
-- [x] Batch mode: multi-persona (2 personas × 2 platforms per product)
-- [x] Batch mode: Facebook word count slider
-- [x] Batch mode: publish buttons with correct review data per video
-- [x] ElevenLabs Flash v2.5 with Vietnamese language_code
-- [x] Auto-fallback to gTTS when ElevenLabs quota exceeded
-- [x] Intro/outro always on, using first/last product image as background
-- [x] Intro shows product title + persona name
-- [x] AI image pre-filter: exclude product photos with human models
-- [x] AI image generation: KOL photo + text description only (no model confusion)
-- [x] Image cap raised to 12 (was 9)
-- [x] Remove book-specific preset personas
-- [x] Remove misleading "Dán từ Shopee" from batch mode
-- [x] Add music/ to .gitignore
-- [x] Code review: no secrets in git
+- [x] Parallel reviews (FB+TK simultaneous)
+- [x] Parallel TTS (both platforms simultaneous)
+- [x] Parallel video gen (2 concurrent in batch)
+- [x] Replace LLM music genre picker with keywords
+- [x] Global voice settings consolidated in UI
+- [x] music/ added to .gitignore
+- [x] No secrets in git
 
-## Platform Setup
+### Testing
+- [x] 11 tests: importer, review errors, platform filtering, render guards, affiliate
+
+## IN PROGRESS
 - [ ] TikTok app approval (submitted, waiting)
-- [ ] AccessTrade: sign up, apply to Shopee campaign
-- [ ] AccessTrade: integrate tracking link API (replace AffiPad for affiliate links)
 
-## Multi-Account Publishing
-- [ ] Support multiple Facebook pages (store array of page tokens)
-- [ ] Different content per page with final approval before publish
-- [ ] Support multiple TikTok/YouTube accounts
+## TODO
 
-## Video Generation Performance
-Current: ~45-60s per video (2 products × 2 personas × 2 platforms = 8 videos ≈ 8 min)
+### Platform
+- [ ] AccessTrade tracking link API (replace AffiPad for affiliate links)
+- [ ] Multi-account publishing (multiple FB pages, content per page)
+- [ ] YouTube: upload as public instead of private
+- [ ] "Đăng tất cả" button in batch Step 3
 
-Bottlenecks (per video):
-  1. ffmpeg segment encoding: ~15-20s (one segment per image, sequential)
-  2. Music fetch from Freesound: ~3-5s (first video only, cached after)
-  3. TTS generation: ~5-10s (ElevenLabs API)
-  4. AI image generation: ~15s per image (Gemini image model)
-  5. Image pre-filter: ~3s per product photo (new, runs once per product)
+### Code
+- [ ] Split app.py into FastAPI routers
+- [ ] Extract more JS from index.html (review.js, video.js)
+- [ ] Tests for extractor URL parsing edge cases
 
-Improvement options:
-  - [ ] Parallel ffmpeg segments: encode image segments in parallel (subprocess pool)
-        → Estimated savings: 10-15s per video
-  - [ ] Pre-generate all audio before video step (batch TTS)
-        → Audio already exists from Step 2, but re-generated if voice_speed differs
-  - [ ] Cache AI images across personas of same product
-        → Same product photos → reuse scene descriptions + filtered images
-  - [ ] Reduce ffmpeg quality for preview (lower resolution, faster preset)
-  - [ ] Use ffmpeg concat demuxer with image duration instead of per-segment encoding
-        → Single ffmpeg call instead of N+2 calls
-        → Estimated savings: 20-30s per video (biggest win)
-  - [ ] Pre-cache music per genre (download 5 tracks per genre on first run)
-
-## AI Image Quality
-- [ ] Test pre-filter accuracy (does it correctly exclude model photos?)
-- [ ] Test KOL resemblance with text-only product description
-- [ ] Consider: send 1 clean product photo + KOL if pre-filter finds any
-- [ ] Fallback: if no clean product photos found, use text-only approach
-
-## Code Cleanup
-- [ ] Clarify or remove _can_use_ffmpeg_pipeline dual-path in render.py
-- [ ] Remove _clean_cache hack in imagegen.py (use proper function parameter)
-
-## Testing
-- [ ] Set up pytest
-- [ ] Test batch generation with 5+ products
-- [ ] Test AI image generation quality with KOL photo
-- [ ] Test all 8 video effect presets
-- [ ] Test affiliate link tracking
-- [ ] Verify ElevenLabs Vietnamese voice quality
-
-## Future
+### Future
 - [ ] Auto-posting scheduler
 - [ ] Analytics dashboard (which products convert)
 - [ ] AccessTrade "top sản phẩm bán chạy" auto-discovery
