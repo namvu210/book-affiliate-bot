@@ -23,11 +23,14 @@ def parse_product_excel(data: bytes) -> list[dict]:
     results = []
     for row in rows[1:]:
         url = str(row[url_col]).strip() if url_col < len(row) and row[url_col] else ""
-        if not url or not url.startswith("http"):
-            continue
         affiliate = ""
         if aff_col is not None and aff_col < len(row) and row[aff_col]:
             affiliate = str(row[aff_col]).strip()
+        # If no URL but has affiliate link, use affiliate as URL
+        if (not url or not url.startswith("http")) and affiliate and affiliate.startswith("http"):
+            url = affiliate
+        if not url or not url.startswith("http"):
+            continue
         title = _title_from_url(url)
         results.append({"url": url, "affiliate": affiliate, "title": title})
     return results
