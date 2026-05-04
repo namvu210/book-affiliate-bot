@@ -68,27 +68,8 @@ def build_review_prompt(
         "facebook": f"Bài viết Facebook ĐÚNG {word_count} từ (KHÔNG được vượt quá), có emoji, chia đoạn rõ ràng, kết thúc bằng CTA mua sản phẩm. Viết theo góc nhìn KOL/người dùng thực sự đã trải nghiệm sản phẩm, KHÔNG viết như shop bán hàng. Dùng ngôi thứ nhất (mình/tôi), chia sẻ cảm nhận cá nhân, kể trải nghiệm thực tế.",
         "tiktok": f"""Script TikTok ĐÚNG {word_count} từ (KHÔNG được vượt quá, KHÔNG tính audio tag trong []). Viết dạng văn nói tự nhiên, KHÔNG dùng timestamp như [0-3s]. Mở đầu bằng hook gây tò mò, ngắn gọn, có nhịp điệu. Viết như KOL đang nói chuyện với người xem, chia sẻ trải nghiệm cá nhân. KHÔNG viết như quảng cáo hay shop bán hàng.
 
-BIỂU CẢM GIỌNG NÓI (ElevenLabs v3 — KHÔNG tính vào số từ):
-
-1. Audio tags — chèn trong ngoặc vuông [] tại điểm chuyển cảm xúc:
-   - Cảm xúc: [excited], [surprised], [curious], [happy], [thoughtful], [whispers], [sarcastic], [mischievously]
-   - Phi ngôn ngữ: [laughs], [sighs], [gasps], [chuckles], [exhales], [snorts]
-   - Hiệu ứng âm thanh: [applause], [clapping] (dùng khi nói về thành tích, kết quả tốt)
-   - Sáng tạo: [woo] (phấn khích), có thể thử các trạng thái cảm xúc mô tả phù hợp ngữ cảnh
-
-2. Dấu câu — ảnh hưởng MẠNH đến cách đọc:
-   - Dấu … tạo khoảng dừng và sức nặng: "Và kết quả là…"
-   - CHỮ IN HOA nhấn mạnh từ quan trọng: "Cuốn này THỰC SỰ hay"
-   - Dấu ! ? tạo nhịp điệu tự nhiên
-   - Kết hợp: "Mà khoan… các bạn có BIẾT điều gì không?"
-
-3. Quy tắc:
-   - Chèn 4-6 audio tag xuyên suốt bài, đặt tự nhiên
-   - Đặt tag ở đầu câu hoặc giữa câu tại điểm chuyển cảm xúc
-   - KHÔNG lạm dụng — mỗi tag phải phù hợp ngữ cảnh
-   - Kết hợp tag + dấu câu cho hiệu ứng mạnh: "[excited] Các bạn ơi… cuốn này ĐỈNH THẬT SỰ!"
-
-Ví dụ: '[curious] Mà khoan… các bạn có biết sản phẩm nào đang HOT nhất không? [gasps] Mình vừa dùng thử và… [excited] nó ĐỈNH KHÔNG THỂ TIN ĐƯỢC! [laughs] Nghiêm túc luôn!'""",
+Chèn 3-4 audio tag [excited], [laughs], [gasps], [curious] vào script tại điểm chuyển cảm xúc. KHÔNG tính vào số từ. Dùng dấu … để tạo khoảng dừng, CHỮ IN HOA để nhấn mạnh.
+Ví dụ: '[curious] Mà khoan… các bạn có biết không? [gasps] Sản phẩm này ĐỈNH thật sự! [laughs]'""",
     }
 
     ratings_context = ""
