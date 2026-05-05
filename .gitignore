@@ -13,3 +13,4 @@ kol/
 music/
 
 *.pem
+publish_history.csv

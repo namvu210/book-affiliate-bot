@@ -305,9 +305,11 @@ async def publish_content(
     review_json: str = Form(...),
     video_url: str = Form(""),
     platforms: str = Form("facebook"),
+    force: str = Form("0"),
 ):
     """Publish video + caption to social platforms."""
     from poster import publish, build_post_request
+    from history import check_duplicate, record_publish
     try:
         data = json.loads(review_json)
     except json.JSONDecodeError:
@@ -318,9 +320,28 @@ async def publish_content(
     platform_list = [p.strip() for p in platforms.split(",") if p.strip() in valid_platforms]
     if not platform_list:
         raise HTTPException(400, f"No valid platform. Choose from: {', '.join(valid_platforms)}")
+
+    # Duplicate check
+    book = data.get("book", {})
+    product_url = book.get("shopee_url", "")
+    if product_url and force != "1":
+        warnings = []
+        for plat in platform_list:
+            prev = check_duplicate(product_url, plat)
+            if prev:
+                warnings.append(f"{plat}: đã đăng ngày {prev['published_at'][:10]}")
+        if warnings:
+            return {"duplicate_warning": True, "warnings": warnings, "message": "Sản phẩm đã được đăng trước đó. Đăng lại?"}
+
     req = build_post_request(data, video_url, platform_list[0])
     req.platforms = platform_list
     results = await publish(req)
+
+    # Record successful publishes
+    for r in results:
+        if r.success:
+            record_publish(product_url, book.get("shopee_url", ""), r.platform, book.get("title", ""))
+
     return {"results": [{"platform": r.platform, "success": r.success, "message": r.message, "post_id": r.post_id} for r in results]}
 
 
@@ -734,6 +755,7 @@ async def generate_video(
     aspect_ratio: str = Form("9:16"),
     voice_speed: int = Form(75),
     logo_position: str = Form("top-right"),
+    logo_text: str = Form(""),
     logo: UploadFile = File(default=None),
     subtitle_style: str = Form("tiktok"),
     highlight_color: str = Form("#FFD700"),
@@ -768,6 +790,7 @@ async def generate_video(
         aspect_ratio=aspect_ratio,
         voice_speed=voice_speed,
         logo_data=(await logo.read()) if logo and logo.filename else None,
+        logo_text=logo_text,
         logo_position=logo_position,
         subtitle_style=subtitle_style,
         highlight_color=highlight_color,

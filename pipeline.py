@@ -100,33 +100,30 @@ async def process_product(inp: PipelineInput) -> PipelineResult:
     except Exception as e:
         log.warning(f"Image resolve failed (continuing): {e}")
 
-    # Step 6: AI images (non-blocking, separate from review)
+    # Step 6: AI images — only if user provided 5-14 images (sweet spot for mixing)
     try:
-        if len(images) < 12:
+        if 5 <= len(images) <= 14:
             from imagegen import generate_lifestyle_images, MAX_AI_IMAGES
             persona = inp.custom_audience or {"name": "Khách hàng phổ thông", "focus": "chất lượng sản phẩm"}
-            num_ai = min(MAX_AI_IMAGES, 12 - len(images))
+            num_ai = 4 if len(images) <= 7 else 3 if len(images) <= 10 else 2
             ai_images = await generate_lifestyle_images(book.title, persona, num_ai, ts, images[:3] if images else [])
             images.extend(ai_images)
-            log.info(f"AI images: {len(ai_images)} generated")
+            log.info(f"AI images: {len(ai_images)} generated (real={len(images)-len(ai_images)})")
+        else:
+            log.info(f"AI images skipped: {len(images)} real images (need 5-14)")
     except Exception as e:
         log.warning(f"AI image gen failed (continuing): {e}")
 
-    # Shuffle: 1 AI image first, 1 AI image last, rest randomized in middle
-    import random
+    # Order: AI first + AI last (eye-catching), real images keep user order in middle
     ai = [img for img in images if "ai_images" in img]
     real = [img for img in images if "ai_images" not in img]
     if len(ai) >= 2:
-        first_ai = ai[0]
-        last_ai = ai[-1]
-        middle = real + ai[1:-1]
-        random.shuffle(middle)
-        images = [first_ai] + middle + [last_ai]
+        images = [ai[0]] + real + ai[1:-1] + [ai[-1]]
     elif len(ai) == 1:
-        random.shuffle(real)
         images = [ai[0]] + real
-    else:
-        random.shuffle(images)
+    # else: keep real images in original order
+
+    images = images[:16]
 
     result["product_images"] = images
     result["affiliate_link"] = book.shopee_url or ""
@@ -140,6 +137,8 @@ async def process_product(inp: PipelineInput) -> PipelineResult:
 
 async def process_batch(inputs: list[PipelineInput]) -> list[PipelineResult]:
     """Process multiple products sequentially."""
+    from music import reset_batch_music
+    reset_batch_music()
     results = []
     for inp in inputs:
         results.append(await process_product(inp))
@@ -224,6 +223,8 @@ class BatchPersonaResult:
 async def batch_with_personas(urls: list[str], voice_type: str = "elevenlabs", voice_id: str = "", word_count: int = 150, affiliate_map: dict = None, word_count_fb: int = 200) -> list[BatchPersonaResult]:
     """For each URL: suggest 2 personas, then generate a review for each persona."""
     import asyncio
+    from music import reset_batch_music
+    reset_batch_music()
     affiliate_map = affiliate_map or {}
     results = []
     for url in urls:

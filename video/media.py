@@ -4,7 +4,7 @@ import math
 import subprocess
 from pathlib import Path
 
-from PIL import Image, ImageFilter
+from PIL import Image, ImageDraw, ImageFilter
 
 from config import get_audio_duration
 
@@ -87,6 +87,28 @@ def extract_video_frames(video_path: str, max_frames: int = 4) -> list[str]:
         if Path(out).exists():
             paths.append(out)
     return paths
+
+
+def text_to_logo(text: str, font_size: int = 36, color: str = "#FFFFFF", opacity: int = 180) -> Image.Image:
+    """Render text as a transparent RGBA logo image. opacity: 0-255."""
+    from video.text import get_font
+    font = get_font(font_size, bold=True)
+    # Measure text
+    dummy = Image.new("RGBA", (1, 1))
+    d = ImageDraw.Draw(dummy)
+    bbox = d.textbbox((0, 0), text, font=font)
+    w, h = bbox[2] - bbox[0] + 20, bbox[3] - bbox[1] + 12
+    # Render with transparency
+    img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    # Parse color
+    c = color.lstrip('#')
+    r, g, b = int(c[0:2], 16), int(c[2:4], 16), int(c[4:6], 16)
+    # Shadow
+    d.text((11, 7), text, fill=(0, 0, 0, opacity // 2), font=font)
+    # Main text with opacity
+    d.text((10, 6), text, fill=(r, g, b, opacity), font=font)
+    return img
 
 
 def paste_logo(frame: Image.Image, logo_img: Image.Image, position: str) -> Image.Image:

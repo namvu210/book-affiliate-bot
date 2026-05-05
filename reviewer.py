@@ -64,6 +64,22 @@ def build_review_prompt(
     word_count: int,
 ) -> str:
     """Build the LLM prompt for a review. Pure function — no I/O."""
+    import random
+
+    # Style rotation — pick a random writing angle each time
+    styles = [
+        "Viết như đang kể chuyện cho bạn thân nghe",
+        "Viết như đang trả lời câu hỏi 'có nên mua không?'",
+        "Viết như đang so sánh trải nghiệm trước và sau khi dùng",
+        "Viết như đang chia sẻ một phát hiện bất ngờ",
+        "Viết như đang tâm sự về thói quen mới",
+    ]
+    style = random.choice(styles)
+
+    # Rotate banned clichés — ban a random subset each time so they appear occasionally, not every time
+    all_cliches = ['chân ái', 'must-have', 'đỉnh của chóp', 'xịn sò', 'không thể bỏ qua', 'cực kỳ ưng', 'quá là', 'siêu phẩm', 'đỉnh nóc']
+    banned_subset = random.sample(all_cliches, k=min(5, len(all_cliches)))
+    banned = f"KHÔNG dùng các cụm từ sau lần này: {', '.join(repr(w) for w in banned_subset)}. Dùng từ ngữ tự nhiên, đa dạng."
     platform_guide = {
         "facebook": f"Bài viết Facebook ĐÚNG {word_count} từ (KHÔNG được vượt quá), có emoji, chia đoạn rõ ràng, kết thúc bằng CTA mua sản phẩm. Viết theo góc nhìn KOL/người dùng thực sự đã trải nghiệm sản phẩm, KHÔNG viết như shop bán hàng. Dùng ngôi thứ nhất (mình/tôi), chia sẻ cảm nhận cá nhân, kể trải nghiệm thực tế.",
         "tiktok": f"""Script TikTok ĐÚNG {word_count} từ (KHÔNG được vượt quá, KHÔNG tính audio tag trong []). Viết dạng văn nói tự nhiên, KHÔNG dùng timestamp như [0-3s]. Mở đầu bằng hook gây tò mò, ngắn gọn, có nhịp điệu. Viết như KOL đang nói chuyện với người xem, chia sẻ trải nghiệm cá nhân. KHÔNG viết như quảng cáo hay shop bán hàng.
@@ -75,6 +91,7 @@ Chèn 4-6 audio tag vào script. Kết hợp tag + dấu câu cho hiệu ứng m
 - Dấu … tạo khoảng dừng: "Và kết quả là…"
 - CHỮ IN HOA nhấn mạnh: "THỰC SỰ hay"
 - Kết hợp tag + dấu câu: "[curious] Mà khoan… các bạn có BIẾT không? [gasps] Sản phẩm này ĐỈNH! [laughs]"
+- KHUYẾN KHÍCH kết hợp tag + dấu câu liên tục để tạo nhịp điệu tự nhiên, biểu cảm mạnh.
 """,
     }
 
@@ -107,6 +124,8 @@ YÊU CẦU: Tạo nội dung cho {platform}.
 {platform_guide.get(platform, platform_guide['facebook'])}
 
 LƯU Ý QUAN TRỌNG:
+- PHONG CÁCH LẦN NÀY: {style}
+- {banned}
 - Dựa vào MÔ TẢ SẢN PHẨM để hiểu rõ nội dung/tính năng sản phẩm
 - Tham khảo nhận xét thực từ người mua để tăng tính thuyết phục (trích dẫn ý kiến nổi bật nếu có)
 - Nếu có đánh giá cao, nhấn mạnh điều đó trong bài viết

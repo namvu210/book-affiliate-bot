@@ -261,6 +261,9 @@
             <label style="font-size:.85em">📘 Facebook: <span id="batch-wc-fb-val">150</span> từ
                 <input type="range" id="batch-word-count-fb" min="100" max="400" value="150" step="10" style="width:80px" oninput="document.getElementById('batch-wc-fb-val').textContent=this.value">
             </label>
+            <label style="font-size:.85em">🏷️ Watermark:
+                <input type="text" id="batch-logo-text" placeholder="Text logo..." style="padding:4px 8px;border-radius:6px;border:1px solid #ddd;font-size:.85em;width:130px">
+            </label>
         </div>
         <div style="display:flex;gap:12px;margin-top:8px;align-items:center;flex-wrap:wrap">
             <button onclick="startBatchReview()" class="btn" style="padding:8px 20px;font-size:1em" id="btn-batch-review">🚀 Tạo Review hàng loạt</button>
@@ -648,6 +651,7 @@ function renderResult(data) {
             <div id="video-upload-preview" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px"></div>
             <label style="font-weight:normal;font-size:.85em;color:#666;margin-top:6px;display:block">🏷️ Logo/Watermark:
                 <input type="file" id="video-logo" accept="image/*" style="margin-left:8px">
+                <input type="text" id="logo-text" placeholder="hoặc nhập text logo..." style="padding:4px 8px;border-radius:6px;border:1px solid #ddd;font-size:.85em;margin-left:4px;width:150px">
                 <select id="logo-position" style="padding:4px 8px;border-radius:6px;border:1px solid #ddd;font-size:.85em;margin-left:4px">
                     <option value="top-right">↗ Trên phải</option>
                     <option value="top-left">↖ Trên trái</option>
@@ -1025,6 +1029,7 @@ function getVideoFormData() {
     if (outroBg) fd.append('outro_bg_url', outroBg);
     const logoFile = document.getElementById('video-logo')?.files?.[0];
     if (logoFile) fd.append('logo', logoFile);
+    fd.append('logo_text', document.getElementById('logo-text')?.value?.trim() || '');
     fd.append('logo_position', document.getElementById('logo-position')?.value || 'top-right');
     const musicSel = document.getElementById('music-select');
     const customUrl = document.getElementById('custom-music-url')?.value?.trim();
@@ -1377,7 +1382,7 @@ function applyShopeeData(data) {
 }
 
 // === Publish to Social Platforms ===
-async function publishVideo(videoUrl, platform) {
+async function publishVideo(videoUrl, platform, force) {
     platform = platform || 'facebook';
     var label = {tiktok:'TikTok',facebook:'Facebook Reels',youtube:'YouTube Shorts'}[platform] || platform;
     var status = document.getElementById('publish-status') || document.getElementById('pub-status-' + platform);
@@ -1388,8 +1393,13 @@ async function publishVideo(videoUrl, platform) {
         fd.append('review_json', JSON.stringify(window._lastReviewData || {}));
         fd.append('video_url', videoUrl);
         fd.append('platforms', platform);
+        if (force) fd.append('force', '1');
         var resp = await fetch('/publish', {method: 'POST', body: fd});
         var data = await resp.json();
+        if (data.duplicate_warning) {
+            status.innerHTML = '⚠️ ' + data.warnings.join(', ') + ' <button onclick="publishVideo(\'' + videoUrl + '\',\'' + platform + '\',true)" style="background:#e94560;color:#fff;border:none;border-radius:6px;padding:4px 12px;cursor:pointer;font-size:.85em">Đăng lại</button>';
+            return;
+        }
         var results = data.results || [];
         var msg = results.map(function(r) {
             var s = (r.success ? '✅' : '❌') + ' ' + r.platform + ': ' + r.message;

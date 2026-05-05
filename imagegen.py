@@ -12,7 +12,7 @@ from config import GEMINI_API_KEY, log, output_path, output_url
 EDIT_MODEL = "gemini-2.5-flash-image"
 SCENE_MODEL = "gemini-2.5-flash-lite"
 KOL_DIR = Path(__file__).parent / "kol"
-MAX_AI_IMAGES = 3
+MAX_AI_IMAGES = 4
 
 
 def save_kol_photo(data: bytes, filename: str) -> str:

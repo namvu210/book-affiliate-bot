@@ -8,7 +8,7 @@ from PIL import Image, ImageDraw
 
 from config import strip_emoji, get_audio_duration
 from video.text import get_font, wrap_text, split_sentences
-from video.media import load_image_fill, extract_video_frames, paste_logo
+from video.media import load_image_fill, extract_video_frames, paste_logo, text_to_logo
 from video.effects import apply_effect, draw_word_highlight_frame
 
 MUSIC_DIR = Path(__file__).parent.parent / "music"
@@ -57,6 +57,7 @@ def generate_tiktok_video(
     music_volume: float = 0.15,
     aspect_ratio: str = "9:16",
     logo_path: str | None = None,
+    logo_text: str = "",
     logo_position: str = "top-right",
     subtitle_style: str = "tiktok",
     highlight_color: str = "#FFD700",
@@ -80,8 +81,7 @@ def generate_tiktok_video(
     sentences = split_sentences(social_post or "")
     char_counts = [max(1, len(s)) for s in sentences]
     total_chars = sum(char_counts)
-    subtitle_duration = duration * 0.95
-    sentence_durations = [(cc / total_chars) * subtitle_duration for cc in char_counts]
+    sentence_durations = [(cc / total_chars) * duration for cc in char_counts]
 
     # Load logo
     logo_img = None
@@ -91,6 +91,9 @@ def generate_tiktok_video(
             logo_img.thumbnail((W // 6, W // 6), Image.LANCZOS)
         except Exception:
             logo_img = None
+    if not logo_img and logo_text:
+        logo_img = text_to_logo(logo_text)
+        logo_img.thumbnail((W // 4, W // 6), Image.LANCZOS)
 
     # Load images
     images = []
@@ -177,31 +180,16 @@ def _render_pil_pipeline(
             first_bg = p
         intro_img = _make_slide(first_bg or intro_bg_path, W, H, (15, 15, 35))
         d = ImageDraw.Draw(intro_img)
-        # Hook as main text (bold, attention-grabbing)
+        # Hook as main text (bold, attention-grabbing) — hook only, no product title
         intro_text = hook or book_title
         tf = get_font(56, bold=True)
         main_lines = wrap_text(strip_emoji(intro_text), tf, W - 120, d)[:3]
-        # Product title as subtitle (if hook is used, show title below)
-        sub_lines = []
-        if hook and book_title:
-            sf = get_font(32)
-            sub_lines = wrap_text(strip_emoji(book_title), sf, W - 120, d)[:2]
-        elif persona_name:
-            sf = get_font(36)
-            sub_lines = wrap_text(strip_emoji(persona_name), sf, W - 120, d)[:2]
-        total_h = len(main_lines) * 72 + (len(sub_lines) * 44 + 16 if sub_lines else 0)
+        total_h = len(main_lines) * 72
         y = (H - total_h) // 2
         for line in main_lines:
             bbox = d.textbbox((0, 0), line, font=tf)
             d.text(((W - bbox[2] + bbox[0]) // 2, y), line, fill=(255, 255, 255), font=tf)
             y += 72
-        if sub_lines:
-            sf = get_font(32) if hook else get_font(36)
-            y += 16
-            for line in sub_lines:
-                bbox = d.textbbox((0, 0), line, font=sf)
-                d.text(((W - bbox[2] + bbox[0]) // 2, y), line, fill=(255, 220, 100), font=sf)
-                y += 44
         if logo_img:
             intro_img = paste_logo(intro_img, logo_img, logo_position)
         raw = intro_img.convert("RGB").tobytes()
@@ -214,13 +202,23 @@ def _render_pil_pipeline(
     if diff != 0 and int_frames:
         int_frames[max(range(len(int_frames)), key=lambda i: int_frames[i])] += diff
 
+    # Pre-compute sentence→image mapping (align transitions with sentence boundaries)
+    n_sent = len(sentences)
+    n_img = len(loaded_imgs)
+    if n_sent <= n_img:
+        # More images than sentences: distribute images across sentences
+        sent_to_img = [min(int(i * n_img / n_sent), n_img - 1) for i in range(n_sent)]
+    else:
+        # More sentences than images: group sentences per image
+        sent_to_img = [min(int(i * n_img / n_sent), n_img - 1) for i in range(n_sent)]
+
     time_elapsed = 0.0
     use_cache = img_effect == "none" and img_style in ("none", "")
     prev_cache_key = None
     prev_frame_bytes = None
     for sent_idx, sentence in enumerate(sentences):
         sent_frames = int_frames[sent_idx] if sent_idx < len(int_frames) else 1
-        img_idx = min(int(time_elapsed / (duration / len(loaded_imgs))), len(loaded_imgs) - 1)
+        img_idx = sent_to_img[sent_idx] if sent_idx < len(sent_to_img) else len(loaded_imgs) - 1
 
         for f in range(sent_frames):
             gp = min(1.0, (time_elapsed + f / fps) / duration)

@@ -491,6 +491,7 @@ async function batchStep3() {
             fd.append('platform', task.platform);
             fd.append('aspect_ratio', '9:16');
             fd.append('voice_speed', _batchState.voice.speed);
+            fd.append('logo_text', document.getElementById('batch-logo-text')?.value?.trim() || '');
             var resp = await fetch('/generate-video', { method: 'POST', body: fd });
             if (!resp.ok) {
                 var errData = await resp.json().catch(function() { return {}; });
@@ -552,7 +553,7 @@ async function batchStep3() {
     document.getElementById('btn-batch-review').disabled = false;
 }
 
-async function batchPublish(vi, btn) {
+async function batchPublish(vi, btn, force) {
     var reviewData = window._batchReviews[vi];
     var videoInfo = window._batchVideos[vi];
     if (!reviewData || !videoInfo) { alert('Dữ liệu không tìm thấy'); return; }
@@ -567,8 +568,14 @@ async function batchPublish(vi, btn) {
         fd.append('review_json', JSON.stringify(reviewData));
         fd.append('video_url', videoUrl);
         fd.append('platforms', platform);
+        if (force) fd.append('force', '1');
         var resp = await fetch('/publish', {method: 'POST', body: fd});
         var data = await resp.json();
+        if (data.duplicate_warning) {
+            if (status) status.innerHTML = '⚠️ ' + data.warnings.join(', ') + ' <button onclick="batchPublish(' + vi + ',this.closest(\'div\').querySelector(\'button\'),true)" style="background:#e94560;color:#fff;border:none;border-radius:6px;padding:3px 10px;cursor:pointer;font-size:.8em">Đăng lại</button>';
+            btn.disabled = false;
+            return;
+        }
         var r = (data.results || [])[0];
         if (r && status) {
             var msg = (r.success ? '✅' : '❌') + ' ' + r.message;

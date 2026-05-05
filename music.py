@@ -80,8 +80,16 @@ GENRE_KEYWORDS = {
 }
 
 
+_batch_used: set[str] = set()
+
+
+def reset_batch_music():
+    """Call at start of batch to reset used tracks."""
+    _batch_used.clear()
+
+
 def get_background_music(product_title: str = "") -> str | None:
-    """Pick genre by product keywords, fetch/cache from Freesound. Returns local path or None."""
+    """Pick genre by product keywords, fetch/cache from Freesound. Avoids repeats within a batch."""
     from pathlib import Path
     music_dir = Path(__file__).parent / "music"
     music_dir.mkdir(exist_ok=True)
@@ -95,9 +103,27 @@ def get_background_music(product_title: str = "") -> str | None:
                 break
 
     cached = list(music_dir.glob(f"{genre}_*.mp3"))
-    if cached:
-        return str(random.choice(cached))
+    available = [p for p in cached if str(p) not in _batch_used]
 
+    # If all cached tracks used, try fetching a new one
+    if not available:
+        path = _fetch_new_track(genre, music_dir)
+        if path:
+            available = [Path(path)]
+
+    # Still nothing? Allow reuse from cache
+    if not available and cached:
+        available = cached
+
+    if available:
+        pick = str(random.choice(available))
+        _batch_used.add(pick)
+        return pick
+    return None
+
+
+def _fetch_new_track(genre: str, music_dir) -> str | None:
+    """Download a new track from Freesound for the given genre."""
     api_key = os.getenv("FREESOUND_API_KEY", "")
     if not api_key:
         return None
@@ -105,15 +131,18 @@ def get_background_music(product_title: str = "") -> str | None:
         r = httpx.get("https://freesound.org/apiv2/search/text/", params={
             "token": api_key, "query": f"{genre} background",
             "filter": "duration:[15 TO 60]",
-            "fields": "id,name,previews", "page_size": "5", "sort": "rating_desc",
+            "fields": "id,name,previews", "page_size": "10", "sort": "rating_desc",
         }, timeout=10)
         results = r.json().get("results", [])
-        if results:
-            url = random.choice(results).get("previews", {}).get("preview-hq-mp3", "")
-            if url:
-                audio = httpx.get(url, timeout=15, follow_redirects=True)
-                if audio.status_code == 200:
-                    cached_path = music_dir / f"{genre}_{random.randint(1000,9999)}.mp3"
+        random.shuffle(results)
+        for result in results:
+            url = result.get("previews", {}).get("preview-hq-mp3", "")
+            if not url:
+                continue
+            audio = httpx.get(url, timeout=15, follow_redirects=True)
+            if audio.status_code == 200:
+                cached_path = music_dir / f"{genre}_{random.randint(1000, 9999)}.mp3"
+                if not cached_path.exists():
                     cached_path.write_bytes(audio.content)
                     return str(cached_path)
     except Exception:

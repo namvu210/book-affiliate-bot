@@ -22,6 +22,7 @@ class VideoInput:
     aspect_ratio: str = "9:16"
     voice_speed: int = 75
     logo_data: bytes | None = None
+    logo_text: str = ""
     logo_position: str = "top-right"
     subtitle_style: str = "tiktok"
     highlight_color: str = "#FFD700"
@@ -62,7 +63,15 @@ async def render_video(inp: VideoInput) -> dict:
             p.write_bytes(file_data)
             media_paths.append(str(p))
 
-    media_paths = media_paths[:16]
+    # Cap images based on audio duration — minimum 2.5s per image for fast TikTok pacing
+    audio_path_check = platform_data.get("audio_url", "")
+    if audio_path_check:
+        from config import get_audio_duration
+        dur = get_audio_duration(str(Path(OUTPUT_DIR) / audio_path_check.split("/")[-1]))
+        max_imgs = min(16, int((dur or 30) / 2.5))
+    else:
+        max_imgs = 16
+    media_paths = media_paths[:max_imgs]
 
     # Fallback: product_images from review data
     if not media_paths and data.get("product_images"):
@@ -141,7 +150,7 @@ async def render_video(inp: VideoInput) -> dict:
         music_file=local_music,
         music_volume=max(0, min(50, inp.music_volume)) / 100,
         aspect_ratio=inp.aspect_ratio,
-        logo_path=logo_path, logo_position=inp.logo_position,
+        logo_path=logo_path, logo_text=inp.logo_text, logo_position=inp.logo_position,
         subtitle_style=inp.subtitle_style, highlight_color=inp.highlight_color,
         img_effect=inp.img_effect, img_style=inp.img_style,
         zoom_ratio=max(5, min(100, inp.zoom_ratio)) / 100,
