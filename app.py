@@ -28,6 +28,22 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
 
+@app.on_event("startup")
+async def start_scheduler():
+    import asyncio
+    from scheduler import check_and_publish
+
+    async def _scheduler_loop():
+        while True:
+            try:
+                await check_and_publish()
+            except Exception as e:
+                _log.warning(f"Scheduler tick error: {e}")
+            await asyncio.sleep(60)
+
+    asyncio.create_task(_scheduler_loop())
+
+
 @app.exception_handler(Exception)
 async def global_error_handler(request: Request, exc: Exception):
     return JSONResponse(status_code=500, content={"detail": str(exc)})
@@ -82,18 +98,26 @@ async def set_model(model: str = "gemini-2.5-flash-lite"):
         return {"error": str(e)[:200]}
 
 
+@app.get("/api/set-image-model")
+async def set_image_model(model: str = "gemini-2.5-flash-image"):
+    """Switch image generation model at runtime."""
+    from imagegen import set_image_model as _set
+    _set(model)
+    return {"status": "ok", "model": model}
+
+
 @app.get("/api/models")
 async def list_models():
     """List available Gemini models."""
     from google import genai
-    from config import GEMINI_API_KEY
+    from config import GEMINI_API_KEY, GEMINI_MODEL
     try:
         client = genai.Client(api_key=GEMINI_API_KEY)
         models = []
         for m in client.models.list():
             models.append(m.name.replace("models/", ""))
         models = [m for m in models if m.startswith("gemini")]
-        return {"models": sorted(models, reverse=True)}
+        return {"models": sorted(models, reverse=True), "current": GEMINI_MODEL}
     except Exception:
         return {"models": [
             "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite",
@@ -300,11 +324,171 @@ async def from_url(
     return result.review_data
 
 
+@app.post("/batch-review")
+async def batch_review(
+    url: str = Form(...),
+    audience: str = Form("custom"),
+    custom_audience: str = Form(""),
+    affiliate_url: str = Form(""),
+    word_count_fb: int = Form(150),
+    word_count_tk: int = Form(120),
+    platforms: str = Form("facebook,tiktok"),
+):
+    """Step 2a: Generate review text only (no audio, no images)."""
+    import asyncio
+    from extractor import extract_from_shopee
+    from reviewer import generate_review
+    from affiliate import get_affiliate_link
+
+    ca = json.loads(custom_audience) if custom_audience else None
+    platform_list = [p.strip() for p in platforms.split(",") if p.strip()]
+
+    book = await extract_from_shopee(url)
+    if affiliate_url:
+        book.shopee_url = affiliate_url
+    else:
+        aff = await get_affiliate_link(url)
+        if aff:
+            book.shopee_url = aff
+
+    # Generate reviews in parallel
+    review_tasks = []
+    review_platforms = []
+    for platform, wc in [("facebook", min(word_count_fb, 300)), ("tiktok", min(word_count_tk, 150))]:
+        if platform not in platform_list:
+            continue
+        review_tasks.append(asyncio.to_thread(generate_review, book, audience, platform, ca, wc))
+        review_platforms.append(platform)
+
+    result = {"book": {"title": book.title, "author": book.author, "price": book.price, "shopee_url": book.shopee_url, "source": book.source}}
+    _fallback = {"social_post": "", "review": "", "hashtags": [], "hook": "", "key_points": [], "cta": ""}
+    for platform, outcome in zip(review_platforms, await asyncio.gather(*review_tasks, return_exceptions=True)):
+        if isinstance(outcome, Exception):
+            result[platform] = {**_fallback, "review": f"Error: {outcome}"}
+        else:
+            result[platform] = outcome
+
+    result["affiliate_link"] = book.shopee_url or ""
+    result["audience_name"] = ca.get("name", "") if ca else ""
+    return result
+
+
+@app.post("/batch-assets")
+async def batch_assets(
+    review_json: str = Form(...),
+    url: str = Form(""),
+    platforms: str = Form("facebook,tiktok"),
+    voice_type: str = Form("edge"),
+    voice_id: str = Form(""),
+    edge_voice: str = Form("vi-VN-HoaiMyNeural"),
+    voice_speed: str = Form("75"),
+    media: list[UploadFile] = File(default=[]),
+):
+    """Step 2b: Generate audio + images + AI images from existing review data."""
+    from tts import generate_audio
+    from extractor import download_images, extract_from_shopee
+
+    data = json.loads(review_json)
+    ts = make_ts()
+    platform_list = [p.strip() for p in platforms.split(",") if p.strip()]
+
+    # Audio — parallel per platform
+    import asyncio
+    audio_tasks = []
+    audio_platforms = []
+    for platform in platform_list:
+        pdata = data.get(platform)
+        if not pdata or not pdata.get("social_post"):
+            continue
+        text = pdata["social_post"]
+        cta = pdata.get("cta", "").strip()
+        if cta and cta not in text:
+            text = text.rstrip() + " " + cta
+        audio_path = str(output_path(ts, f"{platform}.mp3"))
+        audio_tasks.append(generate_audio(text, audio_path, voice_type=voice_type, elevenlabs_voice_id=voice_id, edge_voice=edge_voice))
+        audio_platforms.append(platform)
+
+    for platform, outcome in zip(audio_platforms, await asyncio.gather(*audio_tasks, return_exceptions=True)):
+        if isinstance(outcome, Exception):
+            _log.warning(f"Audio {platform} failed: {outcome}")
+        else:
+            data[platform]["audio_url"] = output_url(ts, f"{platform}.mp3")
+
+    # Images — from uploaded media
+    images = []
+    if media and media[0].filename:
+        img_dir = output_path(ts, "images")
+        img_dir.mkdir(parents=True, exist_ok=True)
+        for i, f in enumerate(media):
+            ext = Path(f.filename).suffix or ".jpg"
+            save_to = img_dir / f"product_{i}{ext}"
+            save_to.write_bytes(await f.read())
+            images.append(f"{output_url(ts, 'images')}/product_{i}{ext}")
+
+    # If no uploaded images, try extracting from URL
+    if not images and url:
+        book = await extract_from_shopee(url)
+        if book.image_urls:
+            img_dir = str(output_path(ts, "images"))
+            local = await download_images(book.image_urls, img_dir)
+            images = [f"{output_url(ts, 'images')}/{Path(p).name}" for p in local]
+
+    # AI images
+    if 5 <= len(images) <= 14:
+        try:
+            from imagegen import generate_lifestyle_images
+            persona = {"name": data.get("audience_name", "Khách hàng"), "focus": ""}
+            num_ai = 4 if len(images) <= 7 else 3 if len(images) <= 10 else 2
+            ai_images = await generate_lifestyle_images(data["book"]["title"], persona, num_ai, ts, images[:3])
+            images.extend(ai_images)
+        except Exception as e:
+            _log.warning(f"AI images failed: {e}")
+
+    # Order: AI first/last, real in middle
+    ai = [img for img in images if "ai_images" in img]
+    real = [img for img in images if "ai_images" not in img]
+    if len(ai) >= 2:
+        images = [ai[0]] + real + ai[1:-1] + [ai[-1]]
+    elif len(ai) == 1:
+        images = [ai[0]] + real
+    images = images[:16]
+
+    data["product_images"] = images
+
+    # Save review json
+    out = output_path(ts, "review.json")
+    out.write_text(json.dumps(data, ensure_ascii=False, indent=2))
+
+    return data
+
+
+@app.get("/api/history")
+async def get_history(platform: str = "", days: int = 90):
+    """Return publish history, optionally filtered by platform and date range."""
+    from history import HISTORY_FILE, FIELDS
+    import csv
+    from datetime import datetime, timedelta
+    if not HISTORY_FILE.exists():
+        return {"records": []}
+    cutoff = (datetime.now() - timedelta(days=days)).isoformat()
+    records = []
+    with open(HISTORY_FILE, 'r', newline='') as f:
+        for row in csv.DictReader(f):
+            if row.get('published_at', '') < cutoff:
+                continue
+            if platform and row.get('platform') != platform:
+                continue
+            records.append(row)
+    records.reverse()  # newest first
+    return {"records": records}
+
+
 @app.post("/publish")
 async def publish_content(
     review_json: str = Form(...),
     video_url: str = Form(""),
     platforms: str = Form("facebook"),
+    page_id: str = Form(""),
     force: str = Form("0"),
 ):
     """Publish video + caption to social platforms."""
@@ -335,14 +519,102 @@ async def publish_content(
 
     req = build_post_request(data, video_url, platform_list[0])
     req.platforms = platform_list
+    req.page_id = page_id
     results = await publish(req)
 
     # Record successful publishes
+    product_images = data.get("product_images", [])
+    ai_imgs = [p for p in product_images if "ai_images" in p]
+    real_imgs = [p for p in product_images if "ai_images" not in p]
     for r in results:
         if r.success:
-            record_publish(product_url, book.get("shopee_url", ""), r.platform, book.get("title", ""))
+            plat_data = data.get(r.platform, {})
+            record_publish(
+                product_url, book.get("shopee_url", ""), r.platform, book.get("title", ""),
+                persona=data.get("audience_name", ""),
+                hook=plat_data.get("hook", ""),
+                cta=plat_data.get("cta", ""),
+                review_text=plat_data.get("social_post", ""),
+                images=real_imgs, ai_images=ai_imgs, video_path=video_url,
+            )
 
     return {"results": [{"platform": r.platform, "success": r.success, "message": r.message, "post_id": r.post_id} for r in results]}
+
+
+@app.post("/schedule")
+async def schedule_post(
+    review_json: str = Form(...),
+    video_url: str = Form(""),
+    platform: str = Form("facebook"),
+    page_id: str = Form(""),
+    slot: str = Form(""),
+):
+    """Schedule a video for auto-posting at optimal time."""
+    from scheduler import add_job, get_slots
+    data = json.loads(review_json)
+    job = add_job(data, video_url, platform, page_id, slot)
+    return {"status": "ok", "job_id": job["id"], "slot": job["slot"], "slots": get_slots()}
+
+
+@app.get("/api/schedule")
+async def get_schedule():
+    """List all scheduled and recent jobs."""
+    from scheduler import get_all, get_slots
+    jobs = get_all()
+    return {"jobs": jobs, "slots": get_slots()}
+
+
+@app.post("/api/schedule/cancel")
+async def cancel_scheduled(job_id: str = Form(...)):
+    """Cancel a pending scheduled job."""
+    from scheduler import cancel_job
+    if cancel_job(job_id):
+        return {"status": "ok"}
+    return {"status": "error", "message": "Job not found or already published"}
+
+
+@app.post("/api/schedule/slots")
+async def update_slots(slot: str = Form(...)):
+    """Set custom posting time slot (HH:MM). Added to the 4 fixed slots."""
+    from scheduler import set_custom_slot, get_slots
+    set_custom_slot(slot.strip())
+    return {"status": "ok", "slots": get_slots()}
+
+
+@app.post("/api/schedule/reschedule")
+async def reschedule(job_id: str = Form(...), slot: str = Form(...)):
+    """Reschedule a missed/pending job to a new slot."""
+    from scheduler import reschedule_job
+    if reschedule_job(job_id, slot):
+        return {"status": "ok"}
+    return {"status": "error", "message": "Job not found"}
+
+
+@app.post("/api/schedule/publish-now")
+async def publish_scheduled_now(job_id: str = Form(...)):
+    """Immediately publish a scheduled/missed job."""
+    from scheduler import _load_schedule, _mark_done, _mark_failed
+    from poster import publish, build_post_request
+    jobs = _load_schedule()
+    job = next((j for j in jobs if j["id"] == job_id and j["status"] == "pending"), None)
+    if not job:
+        return {"status": "error", "message": "Job not found"}
+    try:
+        data = job["review_data"]
+        req = build_post_request(data, job["video_url"], job["platform"])
+        req.platforms = [job["platform"]]
+        req.page_id = job.get("page_id", "")
+        results = await publish(req)
+        if results and results[0].success:
+            _mark_done(job["id"])
+            return {"status": "ok", "message": results[0].message}
+        else:
+            msg = results[0].message if results else "Unknown error"
+            _mark_failed(job["id"], msg)
+            return {"status": "error", "message": msg}
+    except Exception as e:
+        _mark_failed(job["id"], str(e))
+        return {"status": "error", "message": str(e)}
 
 
 @app.post("/import-excel")
@@ -478,12 +750,13 @@ async def voice_status():
 
 
 @app.post("/upload-kol")
-async def upload_kol(file: UploadFile = File(...)):
-    """Upload KOL reference photo for AI image generation."""
-    from imagegen import save_kol_photo
+async def upload_kol(file: UploadFile = File(...), slot: int = Form(1)):
+    """Upload KOL reference photo (slot 1=front, 2=side angle)."""
+    from imagegen import save_kol_photo, get_kol_photos
     data = await file.read()
-    save_kol_photo(data, file.filename)
-    return {"status": "ok", "message": "✅ Đã lưu ảnh KOL!"}
+    save_kol_photo(data, file.filename, slot=min(max(slot, 1), 2))
+    count = len(get_kol_photos())
+    return {"status": "ok", "count": count, "message": f"✅ Đã lưu ảnh KOL #{slot}! ({count}/2)"}
 
 
 @app.post("/regen-review")
@@ -580,9 +853,18 @@ async def regenerate_image(
 
 @app.get("/api/kol-status")
 async def kol_status():
-    """Check if KOL reference photo exists."""
-    from imagegen import get_kol_photo
-    return {"has_kol": get_kol_photo() is not None}
+    """Check KOL reference photos status."""
+    from imagegen import get_kol_photos
+    photos = get_kol_photos()
+    return {"has_kol": len(photos) > 0, "count": len(photos)}
+
+
+@app.get("/api/facebook-pages")
+async def facebook_pages():
+    """List connected Facebook pages."""
+    from auth import get_facebook_pages
+    pages = get_facebook_pages()
+    return {"pages": [{"page_id": p["page_id"], "name": p["display_name"]} for p in pages]}
 
 
 # === Platform OAuth ===

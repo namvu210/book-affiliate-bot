@@ -145,7 +145,7 @@ async def process_batch(inputs: list[PipelineInput]) -> list[PipelineResult]:
     return results
 
 
-async def _add_audio(result: dict, ts: str, voice_type: str = "gtts", elevenlabs_voice_id: str = "") -> dict:
+async def _add_audio(result: dict, ts: str, voice_type: str = "edge", elevenlabs_voice_id: str = "", edge_voice: str = "vi-VN-HoaiMyNeural") -> dict:
     """Generate voice narration for each platform's social_post — in parallel."""
     import asyncio
     tasks = []
@@ -163,7 +163,7 @@ async def _add_audio(result: dict, ts: str, voice_type: str = "gtts", elevenlabs
             text = text.rstrip() + " " + cta
         suffix = f"{platform}.mp3"
         audio_path = str(output_path(ts, suffix))
-        tasks.append(generate_audio(text, audio_path, voice_type=voice_type, elevenlabs_voice_id=elevenlabs_voice_id))
+        tasks.append(generate_audio(text, audio_path, voice_type=voice_type, elevenlabs_voice_id=elevenlabs_voice_id, edge_voice=edge_voice))
         platforms.append((platform, suffix))
     outcomes = await asyncio.gather(*tasks, return_exceptions=True)
     for (platform, suffix), outcome in zip(platforms, outcomes):

@@ -32,6 +32,12 @@ def get_platform_status() -> dict:
             "name": t.get("display_name", ""),
             "expires_at": t.get("expires_at", 0),
         }
+    # Add FB page count
+    pages = get_facebook_pages()
+    if pages:
+        result["facebook"]["connected"] = True
+        result["facebook"]["name"] = ", ".join(p["display_name"] for p in pages)
+        result["facebook"]["page_count"] = len(pages)
     return result
 
 
@@ -64,7 +70,34 @@ def disconnect_platform(platform: str):
     """Remove stored tokens for a platform."""
     tokens = _load_tokens()
     tokens.pop(platform, None)
+    if platform == "facebook":
+        tokens.pop("facebook_pages", None)
     _save_tokens(tokens)
+
+
+def get_facebook_pages() -> list[dict]:
+    """Return all connected Facebook pages."""
+    tokens = _load_tokens()
+    pages = tokens.get("facebook_pages", [])
+    if not pages:
+        # Backward compat: single page in old format
+        fb = tokens.get("facebook", {})
+        if fb.get("access_token"):
+            pages = [{"access_token": fb["access_token"], "page_id": fb["page_id"], "display_name": fb.get("display_name", "")}]
+    return pages
+
+
+def get_facebook_token(page_id: str = "") -> tuple[str, str]:
+    """Get access token for a specific FB page. Returns (token, page_id)."""
+    pages = get_facebook_pages()
+    if not pages:
+        return "", ""
+    if page_id:
+        for p in pages:
+            if p["page_id"] == page_id:
+                return p["access_token"], p["page_id"]
+    # Default: first page
+    return pages[0]["access_token"], pages[0]["page_id"]
 
 
 # === TikTok OAuth ===
@@ -183,12 +216,14 @@ async def youtube_exchange_code(code: str) -> dict:
 def facebook_auth_url() -> str:
     app_id = os.getenv("FACEBOOK_APP_ID", "")
     redirect = os.getenv("FACEBOOK_REDIRECT_URI", "http://localhost:8000/callback/facebook")
+    state = "https://localhost:8000"
     return (
         f"https://www.facebook.com/v21.0/dialog/oauth"
         f"?client_id={app_id}"
         f"&redirect_uri={redirect}"
-        f"&scope=pages_manage_posts,pages_read_engagement,pages_show_list"
+        f"&scope=pages_manage_posts,pages_read_engagement,pages_show_list,pages_manage_engagement"
         f"&response_type=code"
+        f"&state={state}"
     )
 
 
@@ -209,7 +244,7 @@ async def facebook_exchange_code(code: str) -> dict:
         if not user_token:
             return {}
 
-        # Get page token (long-lived)
+        # Get all page tokens (long-lived)
         pages_resp = await client.get(f"https://graph.facebook.com/v21.0/me/accounts", params={
             "access_token": user_token,
         })
@@ -217,14 +252,23 @@ async def facebook_exchange_code(code: str) -> dict:
         if not pages:
             return {}
 
-        page = pages[0]  # use first page
-        return {
-            "access_token": page["access_token"],
-            "page_id": page["id"],
-            "display_name": page.get("name", "Facebook Page"),
-            "expires_at": time.time() + 5184000,  # page tokens are long-lived (~60 days)
-            "refresh_token": "",
-        }
+        # Save all pages as array
+        fb_pages = []
+        for page in pages:
+            fb_pages.append({
+                "access_token": page["access_token"],
+                "page_id": page["id"],
+                "display_name": page.get("name", "Facebook Page"),
+                "expires_at": time.time() + 5184000,
+            })
+
+        # Store as array; return first for backward compat
+        tokens = _load_tokens()
+        tokens["facebook_pages"] = fb_pages
+        # Keep single "facebook" entry for backward compat (first page)
+        tokens["facebook"] = {**fb_pages[0], "refresh_token": ""}
+        _save_tokens(tokens)
+        return tokens["facebook"]
 
 
 def _refresh_token(platform: str, token_data: dict) -> dict | None:

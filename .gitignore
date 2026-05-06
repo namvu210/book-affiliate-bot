@@ -14,3 +14,5 @@ music/
 
 *.pem
 publish_history.csv
+schedule.json
+schedule_slots.json

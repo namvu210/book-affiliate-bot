@@ -51,8 +51,9 @@ async def generate_audio(
     text: str,
     output_path: str,
     speed: int = DEFAULT_VOICE_SPEED,
-    voice_type: str = "gtts",
+    voice_type: str = "edge",
     elevenlabs_voice_id: str = "",
+    edge_voice: str = "vi-VN-HoaiMyNeural",
     # deprecated — ignored, use speed instead
     rate: str = "",
 ) -> str:
@@ -66,8 +67,10 @@ async def generate_audio(
             await _generate_elevenlabs(clean, output_path, elevenlabs_voice_id)
         except Exception as e:
             import logging
-            logging.getLogger("tts").warning(f"ElevenLabs failed, falling back to gTTS: {e}")
-            await _generate_gtts(_sanitize(text, keep_audio_tags=False), output_path)
+            logging.getLogger("tts").warning(f"ElevenLabs failed, falling back to Edge TTS: {e}")
+            await _generate_edge(_sanitize(text, keep_audio_tags=False), output_path, edge_voice)
+    elif voice_type == "edge":
+        await _generate_edge(clean, output_path, edge_voice)
     else:
         await _generate_gtts(clean, output_path)
 
@@ -82,6 +85,14 @@ async def _generate_gtts(text: str, output_path: str) -> str:
     """Generate raw gTTS audio at normal speed."""
     tts = gTTS(text=text, lang="vi", slow=False)
     tts.save(output_path)
+    return output_path
+
+
+async def _generate_edge(text: str, output_path: str, voice: str = "vi-VN-HoaiMyNeural") -> str:
+    """Generate speech using Microsoft Edge TTS (free, unlimited)."""
+    import edge_tts
+    communicate = edge_tts.Communicate(text, voice)
+    await communicate.save(output_path)
     return output_path
 
 

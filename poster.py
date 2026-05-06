@@ -18,6 +18,7 @@ class PostRequest:
     title: str = ""
     affiliate_link: str = ""
     thumbnail_path: str = ""
+    page_id: str = ""  # specific FB page to post to (empty = default)
     platforms: list[str] = field(default_factory=lambda: ["facebook"])
 
 
@@ -82,10 +83,8 @@ async def publish(req: PostRequest) -> list[PostResult]:
 
 @_adapter("facebook")
 async def _post_facebook_reel(req: PostRequest) -> PostResult:
-    tokens = _load_tokens()
-    fb = tokens.get("facebook", {})
-    access_token = fb.get("access_token")
-    page_id = fb.get("page_id")
+    from auth import get_facebook_token
+    access_token, page_id = get_facebook_token(req.page_id)
     if not access_token or not page_id:
         return PostResult(platform="facebook", success=False, message="Facebook chưa kết nối.")
 

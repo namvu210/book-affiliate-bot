@@ -11,81 +11,100 @@ from config import GEMINI_API_KEY, log, output_path, output_url
 
 EDIT_MODEL = "gemini-2.5-flash-image"
 SCENE_MODEL = "gemini-2.5-flash-lite"
+
+
+def set_image_model(name: str):
+    """Switch the image generation model at runtime."""
+    global EDIT_MODEL
+    EDIT_MODEL = name
 KOL_DIR = Path(__file__).parent / "kol"
 MAX_AI_IMAGES = 4
 
 
-def save_kol_photo(data: bytes, filename: str) -> str:
-    """Save KOL reference photo."""
+def save_kol_photo(data: bytes, filename: str, slot: int = 1) -> str:
+    """Save KOL reference photo (slot 1 = front, slot 2 = side angle)."""
     KOL_DIR.mkdir(exist_ok=True)
     ext = Path(filename).suffix.lower() or ".jpg"
-    path = KOL_DIR / f"kol_reference{ext}"
+    path = KOL_DIR / f"kol_reference_{slot}{ext}"
     path.write_bytes(data)
+    # Keep backward compat: slot 1 also saves as kol_reference for old code
+    if slot == 1:
+        compat = KOL_DIR / f"kol_reference{ext}"
+        compat.write_bytes(data)
     return str(path)
 
 
-def get_kol_photo() -> str | None:
-    """Get saved KOL reference photo path."""
+def get_kol_photos() -> list[str]:
+    """Get all saved KOL reference photo paths (up to 2)."""
     KOL_DIR.mkdir(exist_ok=True)
-    for ext in [".jpg", ".jpeg", ".png", ".webp"]:
-        p = KOL_DIR / f"kol_reference{ext}"
-        if p.exists():
-            return str(p)
-    return None
+    photos = []
+    for slot in [1, 2]:
+        for ext in [".jpg", ".jpeg", ".png", ".webp"]:
+            p = KOL_DIR / f"kol_reference_{slot}{ext}"
+            if p.exists():
+                photos.append(str(p))
+                break
+    # Fallback: old single-file format
+    if not photos:
+        for ext in [".jpg", ".jpeg", ".png", ".webp"]:
+            p = KOL_DIR / f"kol_reference{ext}"
+            if p.exists():
+                return [str(p)]
+    return photos
 
 
-def generate_scene_descriptions(product_title: str, persona: dict, num_scenes: int, product_images: list[str] = None) -> tuple[str, list[str]]:
+def get_kol_photo() -> str | None:
+    """Get primary KOL reference photo path (backward compat)."""
+    photos = get_kol_photos()
+    return photos[0] if photos else None
+
+
+
+def generate_scene_descriptions(product_title: str, persona: dict, num_scenes: int, product_images: list[str] = None) -> tuple[str, list[str], bool, str]:
     """Use multimodal LLM to generate product description + scene descriptions.
-    Returns (product_description, [scene1, scene2, ...])."""
+    Returns (product_description, [scene1, ...], same_person, end_user)."""
     if num_scenes <= 0:
-        return "", []
+        return "", [], True, ""
     persona_name = persona.get("name", "Khách hàng") if isinstance(persona, dict) else str(persona)
     persona_focus = persona.get("focus", "") if isinstance(persona, dict) else ""
 
     prompt = (
-        f"You are a professional TikTok product photographer in Vietnam.\n\n"
+        f"You are a professional TikTok product photographer in Vietnam, known for creative angles and scroll-stopping compositions.\n\n"
         f"Product: {product_title}\n"
         f"Target customer: {persona_name} ({persona_focus})\n\n"
-        f"I will use AI image editing to composite the KOL photo + product photo into lifestyle scenes.\n"
-        f"Generate {num_scenes} SHORT editing instructions. Each instruction tells the AI how to combine "
-        f"the KOL and product into one scene.\n\n"
+        f"Generate {num_scenes} SHORT photo direction instructions for AI image generation.\n\n"
         f"CRITICAL — WHO APPEARS IN THE PHOTO:\n"
         f"The buyer ('{persona_name}') is NOT always the person who uses the product.\n"
-        f"Determine the actual END-USER based on the product:\n"
         f"- Children's books/toys/clothes → show a CHILD using it, NOT the parent\n"
         f"- Pet products → show the PET, NOT the owner\n"
         f"- Gift items → show the RECIPIENT, NOT the buyer\n"
-        f"- Adult products → show the buyer using it\n"
-        f"For '{product_title}': who is the end-user? Show THAT person with the product.\n\n"
-        f"Each instruction should specify:\n"
-        f"- How the person interacts with the product (wearing, holding, using)\n"
-        f"- Vietnamese setting APPROPRIATE for the product:\n"
-        f"  * Underwear/lingerie/bras → bedroom, dressing room, flat lay on bed. NEVER in public.\n"
-        f"  * Swimwear → beach, pool area\n"
-        f"  * Sleepwear/pajamas → bedroom, living room at home\n"
-        f"  * Outerwear/fashion → café, street, office, park\n"
+        f"- Adult products → show the buyer using it\n\n"
+        f"CAMERA ANGLES — each scene MUST use a DIFFERENT angle from this list:\n"
+        f"- Overhead flat lay (top-down, product arranged on surface)\n"
+        f"- Dutch angle (tilted 15-30°, dynamic energy)\n"
+        f"- Low angle looking up (product/person appears powerful)\n"
+        f"- Over-the-shoulder POV (viewer sees what the person sees)\n"
+        f"- Extreme close-up (texture, material detail, macro)\n"
+        f"- Wide establishing shot (person small in environment)\n"
+        f"- Waist-up portrait with product (classic influencer)\n"
+        f"- Hands-only shot (hands interacting with product, no face)\n"
+        f"- Reflection/mirror shot (creative framing)\n"
+        f"- Motion blur / action shot (person using product dynamically)\n\n"
+        f"SETTING — match the product naturally:\n"
+        f"  * Underwear/lingerie → bedroom, flat lay on bed. NEVER in public.\n"
+        f"  * Swimwear → beach, pool\n"
+        f"  * Sleepwear → bedroom, living room\n"
+        f"  * Fashion → café, street, park\n"
         f"  * Kitchen items → kitchen\n"
-        f"  * Books/stationery → desk, café, library\n"
-        f"  * Choose the most NATURAL setting where this product would actually be used/worn\n"
-        f"- Camera angle (close-up, waist-up, full body)\n"
-        f"- Lighting and mood\n\n"
-        f"MANDATORY: The FIRST image must be a product close-up/detail shot — "
-        f"focus on the product itself (texture, material, label, design details). "
-        f"No full body, no person — just the product up close. "
-        f"The remaining images show the person with the product.\n\n"
-        f"Keep each instruction under 100 words.\n"
-        f"Return JSON object: {{\"product_description\": \"detailed description of the product appearance from the photos\", \"scenes\": [\"scene1\", \"scene2\", ...]}}"
+        f"  * Books/stationery → desk, café, library\n\n"
+        f"MANDATORY SEQUENCE:\n"
+        f"- Image 1: Product extreme close-up/detail (texture, label, material). No person.\n"
+        f"- Image 2+: Each uses a DIFFERENT camera angle. NO two scenes with the same angle.\n\n"
+        f"Each instruction: camera angle + person interaction + setting + lighting. Under 80 words.\n"
+        f"Return JSON: {{\"product_description\": \"product appearance from photos\", \"same_person\": true/false (does the buyer USE this product themselves? true=buyer wears/uses it, false=child/pet/recipient uses it), \"end_user\": \"who actually uses the product\", \"scenes\": [\"scene1\", ...]}}"
     )
 
     contents = []
-    kol_path = get_kol_photo()
-    if kol_path:
-        try:
-            contents.append(Image.open(kol_path))
-            contents.append("Above: KOL/reviewer reference photo. Describe this person's appearance "
-                          "(body shape, skin tone, hair style, approximate age) and reference it in your scene descriptions.")
-        except Exception:
-            pass
     if product_images:
         for img_path in product_images[:2]:
             local = str(Path(".") / img_path.lstrip("/"))
@@ -117,13 +136,15 @@ def generate_scene_descriptions(product_title: str, persona: dict, num_scenes: i
         if isinstance(result, dict):
             desc = result.get("product_description", "")
             scenes = [s for s in result.get("scenes", []) if isinstance(s, str)][:num_scenes]
-            log.info(f"Product desc: {desc[:80]}...")
-            return desc, scenes
+            same_person = result.get("same_person", True)
+            end_user = result.get("end_user", persona_name)
+            log.info(f"Product desc: {desc[:80]}... | same_person={same_person}, end_user={end_user}")
+            return desc, scenes, same_person, end_user
         elif isinstance(result, list):
-            return "", [s for s in result if isinstance(s, str)][:num_scenes]
+            return "", [s for s in result if isinstance(s, str)][:num_scenes], True, persona_name
     except Exception as e:
         log.warning(f"Scene description failed: {e}")
-    return "", []
+    return "", [], True, persona_name
 
 
 def _detect_end_user(product_title: str, persona_name: str) -> dict:
@@ -194,27 +215,25 @@ async def generate_lifestyle_images(
 
     persona_name = persona.get("name", "Khách hàng") if isinstance(persona, dict) else str(persona)
 
-    # Detect roles: should we use KOL photo or describe end_user?
-    roles = _detect_end_user(product_title, persona_name)
-    use_kol = roles.get("same_person", True)
-    end_user_desc = roles.get("end_user", persona_name)
+    # Combined: scene descriptions + end-user detection in one LLM call
+    product_desc, scenes, use_kol, end_user_desc = generate_scene_descriptions(product_title, persona, num, product_images)
+    if not end_user_desc:
+        end_user_desc = persona_name
     log.info(f"Roles: same_person={use_kol}, end_user={end_user_desc}")
-
-    product_desc, scenes = generate_scene_descriptions(product_title, persona, num, product_images)
     if not scenes:
         return []
 
     # Load reference images
-    kol_path = get_kol_photo()
-    kol_img = None
-    if kol_path and use_kol:
-        try:
-            kol_img = Image.open(kol_path)
-            log.info(f"KOL photo loaded: {kol_path}")
-        except Exception:
-            log.warning(f"KOL photo failed to load")
-    else:
-        log.info(f"KOL not used (use_kol={use_kol}, kol_path={'set' if kol_path else 'none'})")
+    kol_imgs = []
+    if use_kol:
+        for kol_path in get_kol_photos():
+            try:
+                kol_imgs.append(Image.open(kol_path))
+                log.info(f"KOL photo loaded: {kol_path}")
+            except Exception:
+                pass
+    if not kol_imgs:
+        log.info(f"KOL not used (use_kol={use_kol}, photos={len(get_kol_photos())})")
 
     if not product_desc and not scenes:
         log.warning(f"No product description or scenes generated")
@@ -249,27 +268,60 @@ async def generate_lifestyle_images(
             if product_desc:
                 contents.append(f"Product appearance: {product_desc}")
 
-            # KOL photo — the ONLY image reference for the person
-            if kol_img:
-                contents.append(kol_img)
-                contents.append("PERSON REFERENCE (photo above): This is the person to show in the final image. "
-                              "Match this person's face, body type, skin tone, and hair exactly.")
+            # KOL photos — face/body reference ONLY
+            if kol_imgs:
+                for ki, kimg in enumerate(kol_imgs):
+                    contents.append(kimg)
+                angle_note = " (front + side angle)" if len(kol_imgs) >= 2 else ""
+                contents.append(
+                    f"PERSON REFERENCE{angle_note} — FACE AND BODY ONLY:\n"
+                    "- COPY: face shape, skin tone, hair style, body type, approximate age\n"
+                    "- NEVER COPY: clothing, accessories, background, pose, lighting from these photos\n"
+                    "- The person must wear the PRODUCT or clothing appropriate to the scene\n"
+                    "- The background must match the SCENE DESCRIPTION, NOT the reference photo background"
+                )
 
-            if use_kol and kol_img:
-                person_instruction = ("The person MUST look like the PERSON REFERENCE photo above. "
-                                     "Dress this person in the product described in the PRODUCT DESCRIPTION text.")
+            if use_kol and kol_imgs:
+                person_instruction = (
+                    "The person MUST match the PERSON REFERENCE face/body. "
+                    "IGNORE their outfit and background — dress them in the product or scene-appropriate clothing."
+                )
             else:
                 person_instruction = f"Show a {end_user_desc} (Vietnamese) with the product in a natural way."
+
+            is_first = (i == 0)
+            first_image_rule = (
+                "FIRST IMAGE HOOK: This is the video thumbnail — it must STOP THE SCROLL. "
+                "Use the most dramatic angle, strongest contrast, or intriguing partial reveal. "
+                "Bold color or unexpected composition that breaks pattern in a feed."
+            ) if is_first else ""
+
             contents.append(
-                f"Create a new lifestyle photo: {scene} "
-                f"{person_instruction} "
-                f"The product must look exactly like the reference photos. "
-                f"Vietnamese setting. High quality product photography for TikTok. "
-                f"IMPORTANT: All details must be realistic and factual. "
-                f"Any text, signs, labels, or writing in the image MUST be correct Vietnamese or English — "
-                f"no gibberish, no fake characters, no misspelled words. "
-                f"Brand names on the product must match the real product photos exactly. "
-                f"Background details (shop signs, menus, posters) must use real, readable text."
+                f"Create a new lifestyle photo: {scene}\n\n"
+                f"{person_instruction}\n\n"
+                f"The product must look exactly like the reference photos.\n\n"
+                f"{first_image_rule}\n\n"
+                f"COLOR & CONTRAST:\n"
+                f"- ONE bold accent color contrasting with background\n"
+                f"- Dramatic light/shadow (60/40 ratio minimum)\n"
+                f"- Product is the brightest/most saturated element\n"
+                f"- Background slightly desaturated to make product pop\n\n"
+                f"COMPOSITION:\n"
+                f"- Subject fills at least 60% of frame\n"
+                f"- Asymmetric framing (rule of thirds, NOT dead center)\n"
+                f"- Leading lines or gaze direction pointing toward product\n\n"
+                f"EMOTION:\n"
+                f"- Capture a MOMENT, not a pose (mid-action, not static)\n"
+                f"- Include one sensory detail (texture catching light, fabric draping, pages mid-flip)\n\n"
+                f"TIKTOK STYLE:\n"
+                f"- Warm color temperature, shallow depth of field\n"
+                f"- Natural imperfection (lived-in, real-life feel)\n"
+                f"- NO stock photo aesthetic, no white void, no corporate lighting\n"
+                f"- Think 'iPhone photo by a stylish friend'\n\n"
+                f"RULES:\n"
+                f"- Vietnamese setting matching the scene description\n"
+                f"- Any text/signs MUST be correct Vietnamese or English — no gibberish\n"
+                f"- Brand names must match real product photos exactly"
             )
 
             log.info(f"Editing image {i+1}/{len(scenes)}...")

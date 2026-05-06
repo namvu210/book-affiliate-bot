@@ -79,6 +79,21 @@ def build_review_prompt(
     # Rotate banned clichés — ban a random subset each time so they appear occasionally, not every time
     all_cliches = ['chân ái', 'must-have', 'đỉnh của chóp', 'xịn sò', 'không thể bỏ qua', 'cực kỳ ưng', 'quá là', 'siêu phẩm', 'đỉnh nóc']
     banned_subset = random.sample(all_cliches, k=min(5, len(all_cliches)))
+
+    # CTA variety — pick 3 random examples per call
+    cta_pool = [
+        "Link mua ở mô tả nhé!",
+        "Bấm link ở bio để mua nha!",
+        "Mình để link ở comment đầu tiên nè!",
+        "Lướt xuống mô tả là thấy link liền!",
+        "Save lại rồi bấm link mua khi cần nhé!",
+        "Ghim video + bấm link mô tả để không quên!",
+        "Link ở dưới, mua ngay kẻo hết hàng!",
+        "Ai cần thì link mình để ở bio nha!",
+        "Mình để link mua bên dưới rồi đó!",
+        "Xem mô tả để lấy link nha mọi người!",
+    ]
+    cta_examples = random.sample(cta_pool, k=3)
     banned = f"KHÔNG dùng các cụm từ sau lần này: {', '.join(repr(w) for w in banned_subset)}. Dùng từ ngữ tự nhiên, đa dạng."
     platform_guide = {
         "facebook": f"Bài viết Facebook ĐÚNG {word_count} từ (KHÔNG được vượt quá), có emoji, chia đoạn rõ ràng, kết thúc bằng CTA mua sản phẩm. Viết theo góc nhìn KOL/người dùng thực sự đã trải nghiệm sản phẩm, KHÔNG viết như shop bán hàng. Dùng ngôi thứ nhất (mình/tôi), chia sẻ cảm nhận cá nhân, kể trải nghiệm thực tế.",
@@ -138,7 +153,7 @@ Trả về JSON với format:
   "hashtags": ["danh sách hashtag phù hợp — CHỈ đặt ở đây, KHÔNG trong social_post"],
   "hook": "Câu mở đầu gây chú ý (dùng cho video/reel)",
   "key_points": ["3-5 điểm nổi bật của sản phẩm"],
-  "cta": "Lời kêu gọi hành động — PHẢI hướng dẫn người xem tìm link mua (VD: 'Link mua ở mô tả nhé!', 'Bấm link ở bio để mua nha!')"
+  "cta": "Lời kêu gọi hành động — PHẢI hướng dẫn người xem tìm link mua (VD: '{cta_examples[0]}', '{cta_examples[1]}', '{cta_examples[2]}'). Viết CTA ngắn gọn, tự nhiên, KHÁC với các ví dụ."
 }}
 
 CHỈ trả về JSON, không giải thích thêm."""

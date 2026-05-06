@@ -80,8 +80,15 @@ def generate_tiktok_video(
 
     sentences = split_sentences(social_post or "")
     char_counts = [max(1, len(s)) for s in sentences]
-    total_chars = sum(char_counts)
-    sentence_durations = [(cc / total_chars) * duration for cc in char_counts]
+    # CTA is appended to audio but not in social_post — subtract its proportion from subtitle timing
+    cta_chars = len(cta) if cta else 0
+    total_spoken_chars = sum(char_counts) + cta_chars
+    subtitle_duration = duration * (sum(char_counts) / max(1, total_spoken_chars))
+    # Weight later sentences slightly less — TTS rushes endings
+    n = len(char_counts)
+    weights = [cc * (1.0 - 0.15 * i / max(1, n - 1)) for i, cc in enumerate(char_counts)]
+    total_weight = sum(weights)
+    sentence_durations = [(w / total_weight) * subtitle_duration for w in weights]
 
     # Load logo
     logo_img = None
@@ -123,7 +130,7 @@ def generate_tiktok_video(
     with tempfile.TemporaryDirectory() as tmpdir:
         return _render_pil_pipeline(
             tmpdir, output_path, audio_path, music_file, music_volume,
-            loaded_imgs, sentences, sentence_durations, char_counts, total_chars,
+            loaded_imgs, sentences, sentence_durations, char_counts, sum(char_counts),
             duration, fps, size, img_effect, img_style, zoom_ratio,
             subtitle_style, highlight_color, logo_img, logo_position,
             book_title, cta, show_intro, show_outro, intro_bg_path, outro_bg_path, persona_name,
@@ -196,9 +203,16 @@ def _render_pil_pipeline(
         for _ in range(intro_frames):
             ffmpeg_proc.stdin.write(raw)
 
-    # Content
-    int_frames = [max(1, round((cc / total_chars) * content_frames)) for cc in char_counts]
-    diff = content_frames - sum(int_frames)
+    # Content — weight later sentences less (TTS rushes endings)
+    # Subtitle text covers only social_post portion of audio (CTA is spoken but not highlighted)
+    cta_chars = len(cta) if cta else 0
+    total_spoken = sum(char_counts) + cta_chars
+    subtitle_frames = int(content_frames * sum(char_counts) / max(1, total_spoken))
+    n = len(char_counts)
+    weights = [cc * (1.0 - 0.15 * i / max(1, n - 1)) for i, cc in enumerate(char_counts)]
+    total_weight = sum(weights)
+    int_frames = [max(1, round((w / total_weight) * subtitle_frames)) for w in weights]
+    diff = subtitle_frames - sum(int_frames)
     if diff != 0 and int_frames:
         int_frames[max(range(len(int_frames)), key=lambda i: int_frames[i])] += diff
 
@@ -246,6 +260,23 @@ def _render_pil_pipeline(
                 prev_cache_key = cache_key
                 ffmpeg_proc.stdin.write(prev_frame_bytes)
         time_elapsed += sentence_durations[sent_idx]
+
+    # Remaining frames during CTA audio (no text highlight, just last image)
+    remaining_frames = content_frames - subtitle_frames
+    if remaining_frames > 0 and loaded_imgs:
+        src = loaded_imgs[-1]
+        bg = apply_effect(src, img_effect, 1.0, 0.5, loaded_imgs, len(loaded_imgs)-1, size, zoom_ratio)
+        if img_style != "none":
+            bg = apply_effect(bg, img_style, 1.0, 0.5, loaded_imgs, len(loaded_imgs)-1, size, zoom_ratio)
+        if logo_img:
+            bg = paste_logo(bg, logo_img, logo_position)
+        if bg.size != (W, H):
+            bg = bg.resize((W, H), Image.LANCZOS)
+        if bg.mode != "RGB":
+            bg = bg.convert("RGB")
+        raw = bg.tobytes()
+        for _ in range(remaining_frames):
+            ffmpeg_proc.stdin.write(raw)
 
     # Outro
     if outro_frames > 0:
