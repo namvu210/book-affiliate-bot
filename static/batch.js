@@ -296,8 +296,8 @@ async function startBatchReview() {
             var resp = await fetch('/suggest-personas', { method: 'POST', body: fd });
             var pdata = await resp.json();
             p.personas = (pdata.personas || []).slice(0, 2);
+            if (!p.personas.length || pdata.error) throw new Error(pdata.error || 'Empty personas');
             batchLog('📦 ' + (i+1) + '. ' + slug.substring(0,40) + ' → ' + p.personas.map(x => x.name).join(', '));
-            if (!p.personas.length) p.personas = [{name:'Khách hàng phổ thông', tone:'thân thiện', focus:'chất lượng sản phẩm'}];
             p.title = slug;
         } catch(e) {
             // Retry once
@@ -328,11 +328,11 @@ async function startBatchReview() {
             html += '<div style="margin-top:6px;color:#e94560;font-size:.85em">⚠️ Không thể gợi ý đối tượng (LLM lỗi). ';
             html += '<button class="btn" onclick="retryPersona(' + i + ')" style="padding:3px 10px;font-size:.85em">🔄 Thử lại</button></div>';
         } else {
-            html += '<div style="margin-top:6px"><select id="persona-select-' + i + '" style="padding:6px 10px;border-radius:6px;border:1.5px solid #ddd;font-size:.85em">';
+            html += '<div style="margin-top:6px;display:flex;align-items:center;gap:8px"><select id="persona-select-' + i + '" style="padding:6px 10px;border-radius:6px;border:1.5px solid #ddd;font-size:.85em;flex:1">';
             p.personas.forEach(function(per, j) {
                 html += '<option value="' + j + '">🎯 ' + per.name + ' (' + (per.focus||'') + ')</option>';
             });
-            html += '</select></div>';
+            html += '</select><button onclick="retryPersona(' + i + ')" style="padding:4px 8px;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:.8em" title="Gợi ý lại">🔄</button></div>';
         }
         html += '</div>';
     });
@@ -554,8 +554,10 @@ function batchStep2Render() {
             var fb = r.data?.facebook?.social_post || '';
             var tkAudio = r.data?.tiktok?.audio_url || '';
             var fbAudio = r.data?.facebook?.audio_url || '';
+            var missingAudio = (_batchState.platforms.includes('tiktok') && !tkAudio && tk) || (_batchState.platforms.includes('facebook') && !fbAudio && fb);
             if (tkAudio) html += '<div style="margin-top:4px"><span style="font-size:.8em;color:#666">🎵 TikTok:</span> <audio controls style="height:24px;vertical-align:middle"><source src="' + tkAudio + '"></audio></div>';
             if (fbAudio) html += '<div><span style="font-size:.8em;color:#666">📘 Facebook:</span> <audio controls style="height:24px;vertical-align:middle"><source src="' + fbAudio + '"></audio></div>';
+            if (missingAudio) html += '<div style="margin-top:4px;color:orange;font-size:.85em">⚠️ Audio thiếu <button class="btn" onclick="retryBatchAssets(' + ri + ')" style="padding:3px 10px;font-size:.8em;background:#f59e0b">🔄 Tạo lại audio</button></div>';
             html += '<div style="margin-top:6px;font-size:.85em">';
             html += '<details><summary>🎵 TikTok (' + tk.length + ' ký tự)</summary><pre style="white-space:pre-wrap;background:#fff;padding:8px;border-radius:4px;margin-top:4px;font-family:inherit;font-size:.9em">' + tk.replace(/</g,'&lt;') + '</pre></details>';
             html += '<details><summary>📘 Facebook (' + fb.length + ' ký tự)</summary><pre style="white-space:pre-wrap;background:#fff;padding:8px;border-radius:4px;margin-top:4px;font-family:inherit;font-size:.9em">' + fb.replace(/</g,'&lt;') + '</pre></details>';
@@ -774,9 +776,17 @@ async function batchSchedule(vi, btn) {
     if (!videoResults || !videoResults[vi]) return;
     var reviewData = window._batchReviews[vi];
     var videoInfo = window._batchVideos[vi];
-    var slot = prompt('Chọn slot (07:00, 12:00, 19:30, 21:30) hoặc để trống = slot tiếp theo:', '');
-    if (slot === null) return;
     var status = btn.parentElement.querySelector('.bp-status');
+    // Show inline slot picker
+    if (!btn.nextElementSibling || !btn.nextElementSibling.classList.contains('slot-pick')) {
+        var sel = document.createElement('select');
+        sel.className = 'slot-pick';
+        sel.style.cssText = 'padding:2px 6px;border-radius:4px;border:1px solid #ddd;font-size:.7em;margin-left:4px';
+        sel.innerHTML = '<option value="">Tiếp theo</option><option value="07:00">07:00</option><option value="12:00">12:00</option><option value="19:30">19:30</option><option value="21:30">21:30</option>';
+        btn.after(sel);
+        return;
+    }
+    var slot = btn.nextElementSibling.value || '';
     try {
         var fd = new FormData();
         fd.append('review_json', JSON.stringify(reviewData));
@@ -787,7 +797,9 @@ async function batchSchedule(vi, btn) {
         if (pageSelect && pageSelect.value) fd.append('page_id', pageSelect.value);
         var resp = await fetch('/schedule', {method: 'POST', body: fd});
         var data = await resp.json();
-        if (status) status.innerHTML = '⏰ Lên lịch: <strong>' + data.slot + '</strong>';
+        if (status) status.innerHTML = '⏰ ' + data.slot;
+        var pick = btn.nextElementSibling;
+        if (pick && pick.classList.contains('slot-pick')) pick.remove();
     } catch(e) {
         if (status) status.textContent = '❌ ' + e.message;
     }

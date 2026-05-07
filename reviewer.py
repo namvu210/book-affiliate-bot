@@ -26,18 +26,28 @@ def set_model(name: str):
 
 
 def generate_json(prompt: str, max_tokens: int = 2000, model: str = "") -> dict | list:
-    """Send a prompt to Gemini and parse the JSON response."""
-    try:
-        resp = _get_client().models.generate_content(
-            model=model or _model_name,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                max_output_tokens=max_tokens,
-                response_mime_type="application/json",
-            ),
-        )
-    except Exception as e:
-        raise RuntimeError(f"Gemini API error: {e}") from e
+    """Send a prompt to Gemini and parse the JSON response. Retries on transient errors."""
+    import time
+    last_err = None
+    for attempt in range(3):
+        try:
+            resp = _get_client().models.generate_content(
+                model=model or _model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    max_output_tokens=max_tokens,
+                    response_mime_type="application/json",
+                ),
+            )
+            break
+        except Exception as e:
+            last_err = e
+            if "503" in str(e) or "429" in str(e) or "overloaded" in str(e).lower():
+                time.sleep(2 ** attempt)
+                continue
+            raise RuntimeError(f"Gemini API error: {e}") from e
+    else:
+        raise RuntimeError(f"Gemini API error after 3 retries: {last_err}") from last_err
 
     text = resp.text.strip()
     if text.startswith("```"):

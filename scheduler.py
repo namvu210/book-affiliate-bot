@@ -187,6 +187,15 @@ async def check_and_publish():
                 from history import record_publish
                 book = data.get("book", {})
                 plat_data = data.get(job["platform"], {})
+                post_url = ""
+                if results[0].post_id:
+                    pid = results[0].post_id
+                    if job["platform"] == "facebook":
+                        post_url = f"https://www.facebook.com/reel/{pid}"
+                    elif job["platform"] == "tiktok":
+                        post_url = f"https://www.tiktok.com/@/video/{pid}"
+                    elif job["platform"] == "youtube":
+                        post_url = f"https://youtube.com/shorts/{pid}"
                 record_publish(
                     book.get("shopee_url", ""), book.get("shopee_url", ""),
                     job["platform"], book.get("title", ""),
@@ -195,6 +204,7 @@ async def check_and_publish():
                     cta=plat_data.get("cta", ""),
                     review_text=plat_data.get("social_post", ""),
                     video_path=job["video_url"],
+                    post_url=post_url,
                 )
             else:
                 msg = results[0].message if results else "Unknown error"

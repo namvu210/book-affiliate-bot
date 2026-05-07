@@ -158,6 +158,7 @@ async def fetch_product_title(request: Request):
 async def suggest_personas(title: str = Form(...)):
     """Use LLM to suggest 3 customer personas for a product."""
     from reviewer import generate_json
+    from config import log
     prompt = f"""Dựa vào sản phẩm "{title}", gợi ý 3 nhóm khách hàng mục tiêu phù hợp nhất.
 
 Trả về JSON array, mỗi phần tử có:
@@ -167,11 +168,13 @@ Trả về JSON array, mỗi phần tử có:
 
 CHỈ trả về JSON array, không giải thích."""
     try:
-        parsed = generate_json(prompt, max_tokens=500)
+        parsed = generate_json(prompt, max_tokens=500, model="gemini-2.5-flash-lite")
         personas = parsed if isinstance(parsed, list) else parsed.get("personas", [])
-    except Exception:
+        log.info(f"Personas for '{title[:30]}': {[p.get('name','?') for p in personas]}")
+    except Exception as e:
+        log.warning(f"Persona suggestion failed for '{title[:30]}': {e}")
         personas = []
-    return {"personas": personas}
+    return {"personas": personas, "error": "" if personas else "LLM failed"}
 
 
 @app.post("/receive-shopee-data")
@@ -529,6 +532,14 @@ async def publish_content(
     for r in results:
         if r.success:
             plat_data = data.get(r.platform, {})
+            post_url = ""
+            if r.post_id:
+                if r.platform == "facebook":
+                    post_url = f"https://www.facebook.com/reel/{r.post_id}"
+                elif r.platform == "tiktok":
+                    post_url = f"https://www.tiktok.com/@/video/{r.post_id}"
+                elif r.platform == "youtube":
+                    post_url = f"https://youtube.com/shorts/{r.post_id}"
             record_publish(
                 product_url, book.get("shopee_url", ""), r.platform, book.get("title", ""),
                 persona=data.get("audience_name", ""),
@@ -536,6 +547,7 @@ async def publish_content(
                 cta=plat_data.get("cta", ""),
                 review_text=plat_data.get("social_post", ""),
                 images=real_imgs, ai_images=ai_imgs, video_path=video_url,
+                post_url=post_url,
             )
 
     return {"results": [{"platform": r.platform, "success": r.success, "message": r.message, "post_id": r.post_id} for r in results]}

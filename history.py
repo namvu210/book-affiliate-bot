@@ -9,7 +9,7 @@ from pathlib import Path
 HISTORY_FILE = Path("publish_history.csv")
 FIELDS = ['product_id', 'url', 'affiliate_url', 'platform', 'title',
            'persona', 'hook', 'cta', 'review_text',
-           'images', 'ai_images', 'video_path', 'published_at']
+           'images', 'ai_images', 'video_path', 'post_url', 'published_at']
 _lock = threading.Lock()
 
 
@@ -37,7 +37,7 @@ def check_duplicate(url: str, platform: str) -> dict | None:
 def record_publish(url: str, affiliate_url: str, platform: str, title: str = "",
                    persona: str = "", hook: str = "", cta: str = "",
                    review_text: str = "", images: list[str] = None,
-                   ai_images: list[str] = None, video_path: str = ""):
+                   ai_images: list[str] = None, video_path: str = "", post_url: str = ""):
     """Record a successful publish with all asset locations."""
     product_id = _extract_product_id(url)
     exists = HISTORY_FILE.exists()
@@ -59,5 +59,6 @@ def record_publish(url: str, affiliate_url: str, platform: str, title: str = "",
                 'images': '|'.join(images or []),
                 'ai_images': '|'.join(ai_images or []),
                 'video_path': video_path,
+                'post_url': post_url,
                 'published_at': datetime.now().isoformat(),
             })

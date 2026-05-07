@@ -255,33 +255,31 @@ async def generate_lifestyle_images(
     img_dir = output_path(ts, "ai_images")
     img_dir.mkdir(parents=True, exist_ok=True)
 
-    paths = []
-    for i, scene in enumerate(scenes):
+    # Load product images once (shared across all parallel calls)
+    prod_imgs = []
+    if product_images:
+        for img_url in product_images[:2]:
+            local = str(Path(".") / img_url.lstrip("/"))
+            if Path(local).exists():
+                try:
+                    prod_imgs.append(_resize_for_input(Image.open(local)))
+                except Exception:
+                    pass
+
+    import asyncio
+
+    async def _gen_one(i, scene):
+        """Generate a single lifestyle image."""
         try:
-            # Build edit request — product images (user-ordered: first images are product-only) + KOL
             contents = []
-
-            # Send first 2 product images (user puts product-only images first)
-            prod_count = 0
-            if product_images:
-                for img_url in product_images[:2]:
-                    local = str(Path(".") / img_url.lstrip("/"))
-                    if Path(local).exists():
-                        try:
-                            contents.append(_resize_for_input(Image.open(local)))
-                            prod_count += 1
-                        except Exception:
-                            pass
-            if prod_count:
+            for pimg in prod_imgs:
+                contents.append(pimg)
+            if prod_imgs:
                 contents.append("PRODUCT PHOTOS above: match the product appearance exactly.")
-
-            # Product described via text (from scene description step)
             if product_desc:
                 contents.append(f"Product appearance: {product_desc}")
-
-            # KOL photos — face/body reference ONLY
             if kol_imgs:
-                for ki, kimg in enumerate(kol_imgs):
+                for kimg in kol_imgs:
                     contents.append(kimg)
                 angle_note = " (front + side angle)" if len(kol_imgs) >= 2 else ""
                 contents.append(
@@ -336,7 +334,8 @@ async def generate_lifestyle_images(
             )
 
             log.info(f"Editing image {i+1}/{len(scenes)}...")
-            result = client.models.generate_content(
+            result = await asyncio.to_thread(
+                client.models.generate_content,
                 model=EDIT_MODEL,
                 contents=contents,
                 config=types.GenerateContentConfig(response_modalities=["IMAGE", "TEXT"]),
@@ -346,16 +345,13 @@ async def generate_lifestyle_images(
                 if part.inline_data:
                     img_path = img_dir / f"ai_{i}.png"
                     img_path.write_bytes(part.inline_data.data)
-                    paths.append(f"{output_url(ts, 'ai_images')}/ai_{i}.png")
                     log.info(f"Generated image {i+1}/{len(scenes)} ({len(part.inline_data.data)} bytes)")
-                    break
+                    return f"{output_url(ts, 'ai_images')}/ai_{i}.png"
             else:
-                # No image in response — log what we got
                 parts = result.candidates[0].content.parts if result.candidates and result.candidates[0].content else []
                 text_parts = [p.text for p in parts if hasattr(p, 'text') and p.text]
                 finish = getattr(result.candidates[0], 'finish_reason', 'unknown') if result.candidates else 'no candidates'
                 log.warning(f"Image {i+1}: no image returned. Finish: {finish}. Text: {'; '.join(text_parts)[:200]}")
-                # Retry without KOL if safety-blocked (product-only flat lay)
                 if 'IMAGE_OTHER' in str(finish) or 'SAFETY' in str(finish):
                     try:
                         retry_contents = []
@@ -366,7 +362,8 @@ async def generate_lifestyle_images(
                             f"with soft lighting. Vietnamese aesthetic. No people, no models. "
                             f"High quality product photography for social media."
                         )
-                        retry_result = client.models.generate_content(
+                        retry_result = await asyncio.to_thread(
+                            client.models.generate_content,
                             model=EDIT_MODEL, contents=retry_contents,
                             config=types.GenerateContentConfig(response_modalities=["IMAGE", "TEXT"]),
                         )
@@ -374,11 +371,14 @@ async def generate_lifestyle_images(
                             if rp.inline_data:
                                 img_path = img_dir / f"ai_{i}.png"
                                 img_path.write_bytes(rp.inline_data.data)
-                                paths.append(f"{output_url(ts, 'ai_images')}/ai_{i}.png")
                                 log.info(f"Retry image {i+1}: flat-lay generated ({len(rp.inline_data.data)} bytes)")
-                                break
+                                return f"{output_url(ts, 'ai_images')}/ai_{i}.png"
                     except Exception as re:
                         log.warning(f"Retry image {i+1} also failed: {re}")
         except Exception as e:
             log.warning(f"Image {i+1} failed: {type(e).__name__}: {e}")
+        return None
+
+    results = await asyncio.gather(*[_gen_one(i, scene) for i, scene in enumerate(scenes)])
+    paths = [r for r in results if r]
     return paths

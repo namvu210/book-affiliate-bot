@@ -1670,6 +1670,7 @@ async function loadHistory() {
             records.forEach(function(r) {
                 var date = (r.published_at || '').substring(0, 10);
                 var platIcon = {facebook:'📘',tiktok:'🎵',youtube:'▶️'}[r.platform] || r.platform;
+                var platCell = r.post_url ? '<a href="' + r.post_url + '" target="_blank" title="Xem bài đăng">' + platIcon + '</a>' : platIcon;
                 var title = (r.title || '').substring(0, 50);
                 var videoLink = r.video_path ? '<a href="' + r.video_path + '" target="_blank">▶️</a>' : '';
                 var copyBtn = r.review_text ? '<button onclick="navigator.clipboard.writeText(this.dataset.t);this.textContent=\'✅\'" data-t="' + r.review_text.replace(/"/g,'&quot;').replace(/\n/g,' ') + '" style="border:none;background:none;cursor:pointer">📋</button>' : '';
@@ -1677,7 +1678,7 @@ async function loadHistory() {
                 html += '<tr style="border-bottom:1px solid #eee">';
                 html += '<td style="padding:6px 8px">' + date + '</td>';
                 html += '<td style="padding:6px 8px">' + title + ' ' + shopeeLink + '</td>';
-                html += '<td style="padding:6px 8px">' + platIcon + '</td>';
+                html += '<td style="padding:6px 8px">' + platCell + '</td>';
                 html += '<td style="padding:6px 8px;font-size:.8em">' + (r.persona || '') + '</td>';
                 html += '<td style="padding:6px 8px">' + videoLink + ' ' + copyBtn + '</td>';
                 html += '</tr>';

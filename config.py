@@ -29,7 +29,7 @@ def strip_emoji(text: str) -> str:
 
 
 def make_ts() -> str:
-    return datetime.now().strftime("%Y%m%d_%H%M%S")
+    return datetime.now().strftime("%Y%m%d_%H%M%S%f")[:17]
 
 
 def output_path(ts: str, suffix: str) -> Path:
