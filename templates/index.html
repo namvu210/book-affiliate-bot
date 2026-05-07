@@ -1636,8 +1636,9 @@ async function loadHistory() {
             missed.forEach(function(j) {
                 var title = (j.review_data?.book?.title || '').substring(0, 40);
                 var platIcon = {facebook:'📘',tiktok:'🎵',youtube:'▶️'}[j.platform] || j.platform;
+                var vidLink = j.video_url ? '<a href="' + j.video_url + '" target="_blank" title="Xem video">' + platIcon + '</a>' : platIcon;
                 html += '<div style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:.85em">';
-                html += '<span>' + platIcon + ' ' + title + ' (lịch ' + j.slot + ')</span>';
+                html += '<span>' + vidLink + ' ' + title + ' (lịch ' + j.slot + ')</span>';
                 html += '<button onclick="scheduleAction(\'' + j.id + '\',\'now\')" style="padding:2px 8px;border:none;background:#1877f2;color:#fff;border-radius:4px;cursor:pointer;font-size:.8em">📤 Đăng ngay</button>';
                 html += '<button onclick="scheduleAction(\'' + j.id + '\',\'reschedule\')" style="padding:2px 8px;border:none;background:#f59e0b;color:#fff;border-radius:4px;cursor:pointer;font-size:.8em">⏰ Lên lịch lại</button>';
                 html += '<button onclick="scheduleAction(\'' + j.id + '\',\'cancel\')" style="padding:2px 8px;border:none;background:#eee;border-radius:4px;cursor:pointer;font-size:.8em">🗑️ Bỏ qua</button>';
@@ -1651,8 +1652,9 @@ async function loadHistory() {
             upcoming.forEach(function(j) {
                 var title = (j.review_data?.book?.title || '').substring(0, 40);
                 var platIcon = {facebook:'📘',tiktok:'🎵',youtube:'▶️'}[j.platform] || j.platform;
+                var vidLink = j.video_url ? '<a href="' + j.video_url + '" target="_blank" title="Xem video">' + platIcon + '</a>' : platIcon;
                 html += '<div style="display:flex;align-items:center;gap:8px;margin-top:6px;font-size:.85em">';
-                html += '<span>' + platIcon + ' ' + title + ' → ' + j.slot + '</span>';
+                html += '<span>' + vidLink + ' ' + title + ' → ' + j.slot + '</span>';
                 html += '<button onclick="scheduleAction(\'' + j.id + '\',\'cancel\')" style="padding:2px 6px;border:none;background:#eee;border-radius:4px;cursor:pointer;font-size:.8em">✕</button>';
                 html += '</div>';
             });
