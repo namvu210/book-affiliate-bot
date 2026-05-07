@@ -12,6 +12,17 @@ from config import GEMINI_API_KEY, log, output_path, output_url
 EDIT_MODEL = "gemini-2.5-flash-image"
 SCENE_MODEL = "gemini-2.5-flash-lite"
 
+# Max dimension for input images sent to Gemini (reduces token cost ~75%)
+INPUT_MAX_PX = 512
+
+
+def _resize_for_input(img: Image.Image) -> Image.Image:
+    """Resize image to fit within INPUT_MAX_PX box to reduce Gemini token cost."""
+    if max(img.size) > INPUT_MAX_PX:
+        img = img.copy()
+        img.thumbnail((INPUT_MAX_PX, INPUT_MAX_PX))
+    return img
+
 
 def set_image_model(name: str):
     """Switch the image generation model at runtime."""
@@ -110,7 +121,7 @@ def generate_scene_descriptions(product_title: str, persona: dict, num_scenes: i
             local = str(Path(".") / img_path.lstrip("/"))
             if Path(local).exists():
                 try:
-                    contents.append(Image.open(local))
+                    contents.append(_resize_for_input(Image.open(local)))
                 except Exception:
                     pass
         contents.append("Above: Real product photos. Use these ONLY for the product appearance "
@@ -184,7 +195,7 @@ def filter_product_images(product_images: list[str], client) -> list[str]:
         if not Path(local).exists():
             continue
         try:
-            img = Image.open(local)
+            img = _resize_for_input(Image.open(local))
             resp = client.models.generate_content(
                 model=SCENE_MODEL,
                 contents=[img, "Does this image contain a person or human model? Answer ONLY 'yes' or 'no'."],
@@ -228,7 +239,7 @@ async def generate_lifestyle_images(
     if use_kol:
         for kol_path in get_kol_photos():
             try:
-                kol_imgs.append(Image.open(kol_path))
+                kol_imgs.append(_resize_for_input(Image.open(kol_path)))
                 log.info(f"KOL photo loaded: {kol_path}")
             except Exception:
                 pass
@@ -257,7 +268,7 @@ async def generate_lifestyle_images(
                     local = str(Path(".") / img_url.lstrip("/"))
                     if Path(local).exists():
                         try:
-                            contents.append(Image.open(local))
+                            contents.append(_resize_for_input(Image.open(local)))
                             prod_count += 1
                         except Exception:
                             pass

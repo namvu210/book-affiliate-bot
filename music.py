@@ -94,7 +94,7 @@ def get_background_music(product_title: str = "") -> str | None:
     music_dir = Path(__file__).parent / "music"
     music_dir.mkdir(exist_ok=True)
 
-    genre = "lofi"
+    genre = "corporate"
     if product_title:
         t = product_title.lower()
         for g, keywords in GENRE_KEYWORDS.items():

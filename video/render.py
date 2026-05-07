@@ -311,7 +311,8 @@ def _render_pil_pipeline(
     if music_file and Path(music_file).exists():
         cmd.extend(["-i", music_file])
         vf = f"[1:a]adelay={intro_delay_ms}|{intro_delay_ms},volume=1.0[voice]" if intro_delay_ms else "[1:a]volume=1.0[voice]"
-        cmd.extend(["-filter_complex", f"{vf};[2:a]volume={music_volume:.2f}[music];[voice][music]amix=inputs=2:duration=shortest[a]", "-map", "0:v", "-map", "[a]"])
+        total_video_dur = (intro_frames + content_frames + outro_frames) / fps
+        cmd.extend(["-filter_complex", f"{vf};[2:a]volume={music_volume:.2f},aloop=loop=-1:size=2e+09,atrim=0:{total_video_dur:.3f}[music];[voice]apad=whole_dur={total_video_dur:.3f}[vpad];[vpad][music]amix=inputs=2:duration=first[a]", "-map", "0:v", "-map", "[a]"])
     elif intro_delay_ms:
         cmd.extend(["-filter_complex", f"[1:a]adelay={intro_delay_ms}|{intro_delay_ms}[a]", "-map", "0:v", "-map", "[a]"])
     else:

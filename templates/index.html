@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Product Review Service</title>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f2f5; color: #1a1a2e; }
@@ -1697,10 +1698,22 @@ async function scheduleAction(jobId, action) {
     if (action === 'now') {
         await fetch('/api/schedule/publish-now', {method:'POST', body:fd});
     } else if (action === 'reschedule') {
-        var slot = prompt('Chọn slot mới (07:00, 12:00, 19:30, 21:30):', '19:30');
-        if (!slot) return;
-        fd.append('slot', slot);
-        await fetch('/api/schedule/reschedule', {method:'POST', body:fd});
+        var slots = ['07:00','12:00','19:30','21:30'];
+        var slot = slots[(slots.indexOf('19:30') + 1) % slots.length];
+        var pick = document.createElement('select');
+        pick.innerHTML = slots.map(s => '<option value="'+s+'">'+s+'</option>').join('');
+        pick.style.cssText = 'margin-left:4px';
+        var ok = document.createElement('button');
+        ok.textContent = '✓';
+        ok.style.cssText = 'margin-left:4px;cursor:pointer';
+        ok.onclick = async function() {
+            fd.append('slot', pick.value);
+            await fetch('/api/schedule/reschedule', {method:'POST', body:fd});
+            loadHistory();
+        };
+        var target = event?.target;
+        if (target) { target.after(pick); pick.after(ok); }
+        return;
     } else {
         await fetch('/api/schedule/cancel', {method:'POST', body:fd});
     }
