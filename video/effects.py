@@ -193,6 +193,103 @@ def apply_effect(src, effect, gp, lp, all_imgs, img_idx, size, zoom_ratio=0.15):
         return center_crop(src, W, H)
 
 
+# === Transition effects (applied between image switches) ===
+
+TRANSITION_FRAMES = 4  # frames for transition (~0.17s at 24fps)
+
+
+def apply_transition(prev_img, next_img, progress, transition, size):
+    """Apply transition between two images. progress=0→1 over TRANSITION_FRAMES."""
+    W, H = size
+    img1 = center_crop(prev_img, W, H)
+    img2 = center_crop(next_img, W, H)
+
+    if transition == "whip_pan":
+        # Horizontal motion blur swipe
+        blend = progress
+        offset = int((1 - progress) * W * 0.3)
+        canvas = Image.new("RGB", (W, H), (0, 0, 0))
+        # Outgoing image slides left with blur
+        if progress < 0.5:
+            shifted = img1.transform((W, H), Image.AFFINE, (1, 0, int(progress * W * 0.6), 0, 1, 0))
+            blurred = shifted.filter(ImageFilter.GaussianBlur(radius=int(20 * progress * 2)))
+            return blurred
+        else:
+            # Incoming image slides in from right with blur
+            p2 = (progress - 0.5) * 2
+            shift = int((1 - p2) * W * 0.6)
+            shifted = img2.transform((W, H), Image.AFFINE, (1, 0, -shift, 0, 1, 0))
+            blurred = shifted.filter(ImageFilter.GaussianBlur(radius=int(20 * (1 - p2))))
+            return blurred
+
+    elif transition == "glitch_trans":
+        # RGB split + horizontal slice displacement
+        if progress < 0.5:
+            bg = img1
+        else:
+            bg = img2
+        r, g, b = bg.split()
+        offset_x = int(15 * math.sin(progress * math.pi))
+        r = r.transform(r.size, Image.AFFINE, (1, 0, offset_x, 0, 1, 0))
+        b = b.transform(b.size, Image.AFFINE, (1, 0, -offset_x, 0, 1, 0))
+        result = Image.merge("RGB", (r, g, b))
+        # Add horizontal slice displacement
+        import random
+        random.seed(int(progress * 100))
+        for _ in range(3):
+            y1 = random.randint(0, H - 60)
+            h = random.randint(20, 60)
+            strip = result.crop((0, y1, W, y1 + h))
+            dx = random.randint(-20, 20)
+            result.paste(strip, (dx, y1))
+        return result
+
+    elif transition == "shutter":
+        # Rapid flash of multiple images
+        n_img = len([prev_img, next_img])
+        # Flash white then show next
+        if progress < 0.3:
+            return Image.blend(img1, Image.new("RGB", (W, H), (255, 255, 255)), progress / 0.3 * 0.8)
+        elif progress < 0.5:
+            return Image.new("RGB", (W, H), (255, 255, 255))
+        elif progress < 0.7:
+            p = (progress - 0.5) / 0.2
+            return Image.blend(Image.new("RGB", (W, H), (255, 255, 255)), img2, p)
+        else:
+            return img2
+
+    elif transition == "zoom_through":
+        # Zoom into current → zoom out of next
+        if progress < 0.5:
+            # Zoom into img1
+            z = 1.0 + progress * 2 * 0.5  # 1.0 → 1.5
+            cw, ch = int(W / z), int(H / z)
+            cx, cy = (W - cw) // 2, (H - ch) // 2
+            return img1.crop((cx, cy, cx + cw, cy + ch)).resize((W, H), Image.LANCZOS)
+        else:
+            # Zoom out from img2
+            p2 = (progress - 0.5) * 2
+            z = 1.5 - p2 * 0.5  # 1.5 → 1.0
+            cw, ch = int(W / z), int(H / z)
+            cx, cy = (W - cw) // 2, (H - ch) // 2
+            return img2.crop((cx, cy, cx + cw, cy + ch)).resize((W, H), Image.LANCZOS)
+
+    elif transition == "split_reveal":
+        # Horizontal split from center revealing next image
+        split_h = int(H * progress / 2)
+        result = img2.copy()
+        # Top part of img1 slides up
+        if split_h < H // 2:
+            top = img1.crop((0, 0, W, H // 2 - split_h))
+            bottom = img1.crop((0, H // 2 + split_h, W, H))
+            result.paste(top, (0, 0))
+            result.paste(bottom, (0, H // 2 + split_h))
+        return result
+
+    # Default: simple crossfade
+    return Image.blend(img1, img2, progress)
+
+
 def draw_word_highlight_frame(
     bg: Image.Image,
     sentence: str,

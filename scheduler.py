@@ -13,7 +13,7 @@ SLOTS_FILE = Path("schedule_slots.json")
 _lock = threading.Lock()
 
 # Fixed optimal posting slots (Vietnam market) + 1 custom
-FIXED_SLOTS = ["07:00", "12:00", "19:30", "21:30"]
+FIXED_SLOTS = ["08:30", "12:00", "19:00", "21:30"]
 
 
 def get_custom_slot() -> str:
@@ -148,32 +148,44 @@ def _mark_failed(job_id: str, error: str):
 
 
 async def check_and_publish():
-    """Check if any pending jobs match the current time slot. Called every 60s."""
+    """Check if any pending jobs match the current time. Called every 60s."""
     now = datetime.now()
     current_time = now.strftime("%H:%M")
 
-    # Only fire within ±2 min of a slot
-    matching_slot = None
-    for s in get_slots():
-        sh, sm = int(s.split(":")[0]), int(s.split(":")[1])
-        slot_time = now.replace(hour=sh, minute=sm, second=0)
-        diff = abs((now - slot_time).total_seconds())
-        if diff <= 120:
-            matching_slot = s
-            break
-
-    if not matching_slot:
-        return
-
-    pending = [j for j in _load_schedule() if j["status"] == "pending" and j["slot"] == matching_slot]
+    pending = [j for j in _load_schedule() if j["status"] == "pending"]
     if not pending:
         return
 
-    log.info(f"Scheduler: {len(pending)} jobs for slot {matching_slot}")
+    # Find jobs ready to publish
+    ready = []
+    for j in pending:
+        slot = j.get("slot", "")
+        if "T" in slot:
+            # Full datetime: "2026-05-09T19:30"
+            try:
+                slot_dt = datetime.fromisoformat(slot)
+                if abs((now - slot_dt).total_seconds()) <= 120:
+                    ready.append(j)
+            except ValueError:
+                pass
+        elif slot:
+            # Time-only: "19:30" — matches any day
+            try:
+                sh, sm = int(slot.split(":")[0]), int(slot.split(":")[1])
+                slot_time = now.replace(hour=sh, minute=sm, second=0)
+                if abs((now - slot_time).total_seconds()) <= 120:
+                    ready.append(j)
+            except (ValueError, IndexError):
+                pass
+
+    if not ready:
+        return
+
+    log.info(f"Scheduler: {len(ready)} jobs ready to publish")
 
     from poster import publish, build_post_request
 
-    for job in pending:
+    for job in ready:
         try:
             data = job["review_data"]
             req = build_post_request(data, job["video_url"], job["platform"])

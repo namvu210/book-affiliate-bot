@@ -23,8 +23,9 @@ class PipelineInput:
     word_count_fb: int = 150
     word_count_tk: int = 120
     image_urls: list[str] = field(default_factory=list)
-    voice_type: str = "elevenlabs"
-    elevenlabs_voice_id: str = "T4jrQr9x0Y24833yKCWR"  # Thuý Hà V1
+    voice_type: str = "edge"
+    elevenlabs_voice_id: str = "T4jrQr9x0Y24833yKCWR"
+    voice_speed: int = 175
     platforms: list[str] = field(default_factory=lambda: ["facebook", "tiktok"])
 
 
@@ -67,31 +68,21 @@ async def process_product(inp: PipelineInput) -> PipelineResult:
     except Exception as e:
         log.warning(f"Affiliate failed (continuing): {e}")
 
-    # Step 3: Generate reviews — platforms in parallel
+    # Step 3: Generate ONE review (used for video + all platforms)
     import asyncio
     from reviewer import generate_review
-    review_tasks = []
-    review_platforms = []
-    for platform, wc in [("facebook", min(inp.word_count_fb, 300)), ("tiktok", min(inp.word_count_tk, 150))]:
-        if platform not in inp.platforms:
-            continue
-        review_tasks.append(asyncio.to_thread(generate_review, book, inp.audience, platform, inp.custom_audience, wc))
-        review_platforms.append(platform)
     _fallback = {"social_post": "", "review": "", "hashtags": [], "hook": "", "key_points": [], "cta": ""}
-    for platform, outcome in zip(review_platforms, await asyncio.gather(*review_tasks, return_exceptions=True)):
-        if isinstance(outcome, Exception):
-            result[platform] = {**_fallback, "review": f"Error: {outcome}"}
-            log.warning(f"{platform} review failed (continuing): {outcome}")
-        else:
-            result[platform] = outcome
-            log.info(f"{platform} review generated")
-
-    # Step 4: Audio — each platform independent
     try:
-        result = await _add_audio(result, ts, inp.voice_type, inp.elevenlabs_voice_id)
-        log.info(f"Audio generated")
+        review = await asyncio.to_thread(generate_review, book, inp.audience, "facebook", inp.custom_audience, inp.word_count_fb)
+        log.info(f"Review generated ({len(review.get('social_post',''))} chars)")
     except Exception as e:
-        log.warning(f"Audio failed (continuing): {e}")
+        review = {**_fallback, "review": f"Error: {e}"}
+        log.warning(f"Review failed: {e}")
+    # Share same review data across all platforms
+    for platform in inp.platforms:
+        result[platform] = dict(review)
+
+    # Step 4: Audio — skipped, user generates manually via "Tạo giọng nói"
 
     # Step 5: Resolve images (non-blocking)
     try:
@@ -145,32 +136,30 @@ async def process_batch(inputs: list[PipelineInput]) -> list[PipelineResult]:
     return results
 
 
-async def _add_audio(result: dict, ts: str, voice_type: str = "edge", elevenlabs_voice_id: str = "", edge_voice: str = "vi-VN-HoaiMyNeural") -> dict:
-    """Generate voice narration for each platform's social_post — in parallel."""
-    import asyncio
-    tasks = []
-    platforms = []
-    for platform in ["facebook", "tiktok"]:
+async def _add_audio(result: dict, ts: str, voice_type: str = "edge", elevenlabs_voice_id: str = "", edge_voice: str = "vi-VN-HoaiMyNeural", speed: int = 175) -> dict:
+    """Generate ONE voice narration, shared across all platforms."""
+    # Find the first platform with content
+    text = ""
+    cta = ""
+    for platform in ["facebook", "tiktok", "youtube"]:
         data = result.get(platform)
-        if not data:
-            continue
-        text = data.get("social_post", "")
-        if not text:
-            continue
-        # Append CTA so it's spoken at the end
-        cta = data.get("cta", "").strip()
-        if cta and cta not in text:
-            text = text.rstrip() + " " + cta
-        suffix = f"{platform}.mp3"
-        audio_path = str(output_path(ts, suffix))
-        tasks.append(generate_audio(text, audio_path, voice_type=voice_type, elevenlabs_voice_id=elevenlabs_voice_id, edge_voice=edge_voice))
-        platforms.append((platform, suffix))
-    outcomes = await asyncio.gather(*tasks, return_exceptions=True)
-    for (platform, suffix), outcome in zip(platforms, outcomes):
-        if isinstance(outcome, Exception):
-            log.warning(f"Audio {platform} failed: {outcome}")
-        else:
-            result[platform]["audio_url"] = output_url(ts, suffix)
+        if data and data.get("social_post"):
+            text = data["social_post"]
+            cta = data.get("cta", "").strip()
+            break
+    if not text:
+        return result
+    if cta and cta not in text:
+        text = text.rstrip() + " " + cta
+    audio_path = str(output_path(ts, "facebook.mp3"))
+    try:
+        await generate_audio(text, audio_path, speed=speed, voice_type=voice_type, elevenlabs_voice_id=elevenlabs_voice_id, edge_voice=edge_voice)
+        audio_url = output_url(ts, "facebook.mp3")
+        for platform in ["facebook", "tiktok", "youtube"]:
+            if result.get(platform):
+                result[platform]["audio_url"] = audio_url
+    except Exception as e:
+        log.warning(f"Audio failed: {e}")
     return result
 
 

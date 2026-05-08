@@ -45,7 +45,10 @@ def _resolve_video(video_path: str) -> str | None:
 
 def _build_caption(req: PostRequest, include_affiliate: bool = True, suffix: str = "") -> str:
     """Build caption from request: text + hashtags + optional affiliate + suffix."""
-    caption = req.caption
+    import re
+    # Strip audio tags [excited], [sighs] etc — not for social media display
+    caption = re.sub(r'\[[a-zA-Z_ ]+\]', '', req.caption).strip()
+    caption = re.sub(r'  +', ' ', caption)  # collapse double spaces
     if req.hashtags:
         caption += "\n\n" + " ".join(f"#{h.lstrip('#')}" for h in req.hashtags)
     if include_affiliate and req.affiliate_link:

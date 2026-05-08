@@ -288,9 +288,12 @@ async def from_url(
     audience: str = Form("phu-huynh-lop-5"),
     custom_audience: str = Form(""),
     affiliate_url: str = Form(""),
-    word_count_fb: int = Form(150),
+    word_count_fb: int = Form(120),
     word_count_tk: int = Form(120),
     platforms: str = Form("facebook,tiktok"),
+    voice_type: str = Form("edge"),
+    voice_speed: int = Form(175),
+    voice_id: str = Form(""),
     bookmarklet_images: str = Form("[]"),
     media: list[UploadFile] = File(default=[]),
 ):
@@ -319,6 +322,7 @@ async def from_url(
         affiliate_url=affiliate_url,
         word_count_fb=word_count_fb, word_count_tk=word_count_tk,
         image_urls=uploaded_paths or bm_imgs,
+        voice_type=voice_type, elevenlabs_voice_id=voice_id, voice_speed=voice_speed,
         platforms=platform_list,
     )
     result = await process_product(inp)
@@ -333,7 +337,7 @@ async def batch_review(
     audience: str = Form("custom"),
     custom_audience: str = Form(""),
     affiliate_url: str = Form(""),
-    word_count_fb: int = Form(150),
+    word_count_fb: int = Form(120),
     word_count_tk: int = Form(120),
     platforms: str = Form("facebook,tiktok"),
 ):
@@ -354,22 +358,16 @@ async def batch_review(
         if aff:
             book.shopee_url = aff
 
-    # Generate reviews in parallel
-    review_tasks = []
-    review_platforms = []
-    for platform, wc in [("facebook", min(word_count_fb, 300)), ("tiktok", min(word_count_tk, 150))]:
-        if platform not in platform_list:
-            continue
-        review_tasks.append(asyncio.to_thread(generate_review, book, audience, platform, ca, wc))
-        review_platforms.append(platform)
+    # Generate ONE review, share across platforms
+    _fallback = {"social_post": "", "review": "", "hashtags": [], "hook": "", "key_points": [], "cta": ""}
+    try:
+        review = await asyncio.to_thread(generate_review, book, audience, "facebook", ca, min(word_count_fb, 300))
+    except Exception as e:
+        review = {**_fallback, "review": f"Error: {e}"}
 
     result = {"book": {"title": book.title, "author": book.author, "price": book.price, "shopee_url": book.shopee_url, "source": book.source}}
-    _fallback = {"social_post": "", "review": "", "hashtags": [], "hook": "", "key_points": [], "cta": ""}
-    for platform, outcome in zip(review_platforms, await asyncio.gather(*review_tasks, return_exceptions=True)):
-        if isinstance(outcome, Exception):
-            result[platform] = {**_fallback, "review": f"Error: {outcome}"}
-        else:
-            result[platform] = outcome
+    for platform in platform_list:
+        result[platform] = dict(review)
 
     result["affiliate_link"] = book.shopee_url or ""
     result["audience_name"] = ca.get("name", "") if ca else ""
@@ -384,7 +382,7 @@ async def batch_assets(
     voice_type: str = Form("edge"),
     voice_id: str = Form(""),
     edge_voice: str = Form("vi-VN-HoaiMyNeural"),
-    voice_speed: str = Form("75"),
+    voice_speed: int = Form(175),
     media: list[UploadFile] = File(default=[]),
 ):
     """Step 2b: Generate audio + images + AI images from existing review data."""
@@ -395,27 +393,27 @@ async def batch_assets(
     ts = make_ts()
     platform_list = [p.strip() for p in platforms.split(",") if p.strip()]
 
-    # Audio — parallel per platform
+    # Audio — ONE audio shared across all platforms
     import asyncio
-    audio_tasks = []
-    audio_platforms = []
+    text = ""
     for platform in platform_list:
         pdata = data.get(platform)
-        if not pdata or not pdata.get("social_post"):
-            continue
-        text = pdata["social_post"]
-        cta = pdata.get("cta", "").strip()
-        if cta and cta not in text:
-            text = text.rstrip() + " " + cta
-        audio_path = str(output_path(ts, f"{platform}.mp3"))
-        audio_tasks.append(generate_audio(text, audio_path, voice_type=voice_type, elevenlabs_voice_id=voice_id, edge_voice=edge_voice))
-        audio_platforms.append(platform)
-
-    for platform, outcome in zip(audio_platforms, await asyncio.gather(*audio_tasks, return_exceptions=True)):
-        if isinstance(outcome, Exception):
-            _log.warning(f"Audio {platform} failed: {outcome}")
-        else:
-            data[platform]["audio_url"] = output_url(ts, f"{platform}.mp3")
+        if pdata and pdata.get("social_post"):
+            text = pdata["social_post"]
+            cta = pdata.get("cta", "").strip()
+            if cta and cta not in text:
+                text = text.rstrip() + " " + cta
+            break
+    if text:
+        audio_path = str(output_path(ts, "facebook.mp3"))
+        try:
+            await generate_audio(text, audio_path, speed=voice_speed, voice_type=voice_type, elevenlabs_voice_id=voice_id, edge_voice=edge_voice)
+            audio_url = output_url(ts, "facebook.mp3")
+            for platform in platform_list:
+                if data.get(platform):
+                    data[platform]["audio_url"] = audio_url
+        except Exception as e:
+            _log.warning(f"Audio failed: {e}")
 
     # Images — from uploaded media
     images = []
@@ -671,10 +669,10 @@ async def upload_video(video: UploadFile):
 async def batch_personas(
     urls: str = Form(...),
     affiliate_urls: str = Form("{}"),
-    voice_type: str = Form("elevenlabs"),
-    voice_id: str = Form("T4jrQr9x0Y24833yKCWR"),
+    voice_type: str = Form("edge"),
+    voice_id: str = Form(""),
     word_count: int = Form(150),
-    word_count_fb: int = Form(200),
+    word_count_fb: int = Form(120),
 ):
     """Batch: suggest personas per product, generate reviews for each persona."""
     from pipeline import batch_with_personas
@@ -730,15 +728,18 @@ async def preview_review(
 async def generate_speech(
     text: str = Form(...),
     platform: str = Form("tiktok"),
-    voice_type: str = Form("gtts"),
+    voice_type: str = Form("edge"),
     elevenlabs_voice_id: str = Form(""),
+    edge_voice: str = Form("vi-VN-HoaiMyNeural"),
     speed: int = Form(125),
 ):
     """Generate speech audio from edited text."""
+    from config import log
+    log.info(f"generate-speech: voice_type={voice_type}, speed={speed}, edge_voice={edge_voice}")
     ts = make_ts()
     suffix = f"{platform}.mp3"
     audio_path = str(output_path(ts, suffix))
-    await generate_audio(text, audio_path, speed=speed, voice_type=voice_type, elevenlabs_voice_id=elevenlabs_voice_id)
+    await generate_audio(text, audio_path, speed=speed, voice_type=voice_type, elevenlabs_voice_id=elevenlabs_voice_id, edge_voice=edge_voice)
     return {"audio_url": output_url(ts, suffix)}
 
 
@@ -798,11 +799,12 @@ async def generate_ai_images_endpoint(
     product_images: str = Form("[]"),
 ):
     """Generate AI lifestyle images independently — retryable without regenerating reviews."""
-    from imagegen import generate_lifestyle_images, MAX_AI_IMAGES
+    from imagegen import generate_lifestyle_images
     ts = make_ts()
     imgs = json.loads(product_images)
+    num_ai = 4 if len(imgs) <= 7 else 3 if len(imgs) <= 10 else 2
     persona = {"name": persona_name, "focus": persona_focus}
-    ai_images = await generate_lifestyle_images(title, persona, MAX_AI_IMAGES, ts, imgs[:3])
+    ai_images = await generate_lifestyle_images(title, persona, num_ai, ts, imgs[:3])
     return {"ai_images": ai_images}
 
 

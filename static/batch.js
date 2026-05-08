@@ -269,8 +269,8 @@ async function startBatchReview() {
     var progress = document.getElementById('batch-progress');
     var results = document.getElementById('batch-results');
     var batchVoice = getGlobalVoice();
-    var wordCount = document.getElementById('batch-word-count')?.value || '150';
-    var wordCountFb = document.getElementById('batch-word-count-fb')?.value || '200';
+    var wordCount = document.getElementById('batch-word-count-fb')?.value || '120';
+    var wordCountFb = document.getElementById('batch-word-count-fb')?.value || '120';
     btn.disabled = true;
     results.innerHTML = '';
     _batchState = { products: products, currentIdx: 0, results: [], voice: batchVoice, wordCount: wordCount, wordCountFb: wordCountFb, platforms: selectedPlatforms };
@@ -507,7 +507,7 @@ async function batchStep2b() {
             fd.append('voice_type', _batchState.voice.type);
             fd.append('voice_id', _batchState.voice.voiceId);
             fd.append('edge_voice', _batchState.voice.edgeVoice || 'vi-VN-HoaiMyNeural');
-            fd.append('voice_speed', _batchState.voice.speed);
+            fd.append('voice_speed', 100 + parseInt(_batchState.voice.speed));
             // Send images
             var aiSet = new Set(p.aiFiles || []);
             (p.aiFiles || []).forEach(function(f) { fd.append('media', f); });
@@ -586,7 +586,7 @@ async function retryBatchAssets(ri) {
         fd.append('voice_type', _batchState.voice.type);
         fd.append('voice_id', _batchState.voice.voiceId);
         fd.append('edge_voice', _batchState.voice.edgeVoice || 'vi-VN-HoaiMyNeural');
-        fd.append('voice_speed', _batchState.voice.speed);
+        fd.append('voice_speed', 100 + parseInt(_batchState.voice.speed));
         var aiSet = new Set(p.aiFiles || []);
         (p.aiFiles || []).forEach(function(f) { fd.append('media', f); });
         (p.files || []).forEach(function(f) { if (!aiSet.has(f)) fd.append('media', f); });
@@ -610,13 +610,10 @@ async function batchStep3() {
     var results = document.getElementById('batch-results');
     results.innerHTML = '<h3 style="margin-bottom:12px">⏳ Bước 3: Tạo Video...</h3>';
 
-    // Build all video tasks
+    // Build video tasks — ONE video per review (shared across platforms)
     var tasks = [];
     for (var i = 0; i < reviews.length; i++) {
-        var r = reviews[i];
-        for (var j = 0; j < _batchState.platforms.length; j++) {
-            tasks.push({ review: r, platform: _batchState.platforms[j] });
-        }
+        tasks.push({ review: reviews[i], platform: 'facebook' });
     }
 
     // Run with concurrency limit of 2
@@ -629,8 +626,12 @@ async function batchStep3() {
             fd.append('review_json', JSON.stringify(task.review.data));
             fd.append('platform', task.platform);
             fd.append('aspect_ratio', '9:16');
-            fd.append('voice_speed', _batchState.voice.speed);
+            fd.append('voice_speed', 100 + parseInt(_batchState.voice.speed));
             fd.append('logo_text', document.getElementById('batch-logo-text')?.value?.trim() || '');
+            var effects = ['whip_pan', 'velocity', 'glitch_trans', 'shutter', 'zoom_through'];
+            var styles = ['none', 'color_pop'];
+            fd.append('img_effect', effects[Math.floor(Math.random() * effects.length)]);
+            fd.append('img_style', styles[Math.floor(Math.random() * styles.length)]);
             var resp = await fetch('/generate-video', { method: 'POST', body: fd });
             if (!resp.ok) {
                 var errData = await resp.json().catch(function() { return {}; });
@@ -664,31 +665,30 @@ async function batchStep3() {
     window._batchReviews = videoResults.map(function(v) { return v.review.data; });
     window._batchVideos = videoResults.map(function(v) { return { url: v.video_url, platform: v.platform }; });
 
-    var lastReviewIdx = -1;
     videoResults.forEach(function(v, vi) {
-        var reviewIdx = Math.floor(vi / _batchState.platforms.length);
-        if (reviewIdx !== lastReviewIdx) {
-            if (lastReviewIdx >= 0) html += '</div>';
-            html += '<div class="result-card" style="padding:14px;margin-bottom:10px">';
-            html += '<h4>📦 ' + (v.review.idx+1) + '. ' + (v.review.product.title||'').substring(0,50) + '</h4>';
-            html += '<div style="font-size:.85em;color:#666;margin-bottom:8px">🎯 ' + v.review.persona.name + '</div>';
-            lastReviewIdx = reviewIdx;
-        }
-        var label = v.platform === 'tiktok' ? '🎵 TikTok' : (v.platform === 'youtube' ? '▶️ YouTube' : '📘 Reels');
+        html += '<div class="result-card" style="padding:14px;margin-bottom:10px">';
+        html += '<h4>📦 ' + (v.review.idx+1) + '. ' + (v.review.product.title||'').substring(0,50) + '</h4>';
+        html += '<div style="font-size:.85em;color:#666;margin-bottom:8px">🎯 ' + v.review.persona.name + '</div>';
         if (v.error) {
-            html += '<div style="margin:4px 0;font-size:.85em;color:red">❌ ' + label + ': ' + v.error + ' <button class="btn" onclick="retryVideo(' + vi + ')" style="padding:2px 8px;font-size:.8em;background:#e94560">🔄</button></div>';
+            html += '<div style="margin:4px 0;font-size:.85em;color:red">❌ ' + v.error + ' <button class="btn" onclick="retryVideo(' + vi + ')" style="padding:2px 8px;font-size:.8em;background:#e94560">🔄</button></div>';
         } else {
             html += '<div style="display:inline-block;margin:6px 8px 6px 0;vertical-align:top">';
             html += '<video controls style="max-width:180px;border-radius:8px"><source src="' + v.video_url + '" type="video/mp4"></video>';
-            html += '<br><a href="' + v.video_url + '" download class="btn" style="font-size:.75em;padding:4px 10px;margin-top:4px;display:inline-block">⬇️ ' + label + '</a>';
-            if (v.platform === 'facebook') html += ' <select class="fb-page-sel" style="padding:2px 6px;border-radius:4px;border:1px solid #ddd;font-size:.7em"></select>';
-            html += ' <button class="btn" onclick="batchPublish(' + vi + ',this)" style="font-size:.75em;padding:4px 10px;margin-top:4px;background:' + (v.platform==='tiktok'?'#000':v.platform==='youtube'?'#c00':'#1877f2') + '">📤 Đăng</button>';
-            html += ' <button class="btn" onclick="batchSchedule(' + vi + ',this)" style="font-size:.75em;padding:4px 10px;margin-top:4px;background:#f59e0b">⏰</button>';
+            html += '<br><a href="' + v.video_url + '" download class="btn" style="font-size:.75em;padding:4px 10px;margin-top:4px;display:inline-block">⬇️ Video</a>';
+            html += '<div style="margin-top:6px">';
+            html += '<select class="fb-page-sel" style="padding:2px 6px;border-radius:4px;border:1px solid #ddd;font-size:.7em;margin-right:4px"></select>';
+            _batchState.platforms.forEach(function(plat) {
+                var icon = plat === 'tiktok' ? '🎵' : (plat === 'youtube' ? '▶️' : '📘');
+                var bg = plat === 'tiktok' ? '#000' : (plat === 'youtube' ? '#c00' : '#1877f2');
+                html += ' <button class="btn" onclick="batchPublish(' + vi + ',this,\'' + plat + '\')" style="font-size:.75em;padding:4px 10px;background:' + bg + '">' + icon + ' Đăng</button>';
+            });
+            html += ' <button class="btn" onclick="batchSchedule(' + vi + ',this)" style="font-size:.75em;padding:4px 10px;background:#f59e0b">⏰</button>';
+            html += '</div>';
             html += '<span class="bp-status" style="font-size:.8em;display:block;margin-top:2px"></span>';
             html += '</div>';
         }
+        html += '</div>';
     });
-    if (lastReviewIdx >= 0) html += '</div>';
     results.innerHTML = html;
     window._batchVideoResults = videoResults;
     progress.innerHTML = '<div style="font-size:.9em;color:green">✅ Hoàn thành! Xem video và đăng bài bên dưới.</div>';
@@ -713,7 +713,7 @@ async function retryVideo(vi) {
         fd.append('review_json', JSON.stringify(task.review.data));
         fd.append('platform', task.platform);
         fd.append('aspect_ratio', '9:16');
-        fd.append('voice_speed', _batchState.voice.speed);
+        fd.append('voice_speed', 100 + parseInt(_batchState.voice.speed));
         fd.append('logo_text', document.getElementById('batch-logo-text')?.value?.trim() || '');
         var resp = await fetch('/generate-video', { method: 'POST', body: fd });
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
@@ -779,14 +779,19 @@ async function batchSchedule(vi, btn) {
     var status = btn.parentElement.querySelector('.bp-status');
     // Show inline slot picker
     if (!btn.nextElementSibling || !btn.nextElementSibling.classList.contains('slot-pick')) {
-        var sel = document.createElement('select');
-        sel.className = 'slot-pick';
-        sel.style.cssText = 'padding:2px 6px;border-radius:4px;border:1px solid #ddd;font-size:.7em;margin-left:4px';
-        sel.innerHTML = '<option value="">Tiếp theo</option><option value="07:00">07:00</option><option value="12:00">12:00</option><option value="19:30">19:30</option><option value="21:30">21:30</option>';
-        btn.after(sel);
+        var wrap = document.createElement('span');
+        wrap.className = 'slot-pick';
+        wrap.style.cssText = 'margin-left:4px;font-size:.75em';
+        wrap.innerHTML = '<select style="padding:2px 6px;border-radius:4px;border:1px solid #ddd" onchange="if(this.value===\'custom\'){this.nextElementSibling.style.display=\'inline\'}else{this.nextElementSibling.style.display=\'none\'}">' +
+            '<option value="">Slot tiếp theo</option><option value="08:30">08:30</option><option value="12:00">12:00</option><option value="19:00">19:00</option><option value="21:30">21:30</option><option value="custom">📅 Tùy chọn...</option></select>' +
+            '<input type="datetime-local" style="padding:2px 6px;border-radius:4px;border:1px solid #ddd;font-size:1em;display:none;margin-left:4px"> ' +
+            '<button onclick="this.parentElement.previousElementSibling.click()" style="padding:2px 6px;border:none;background:#f59e0b;color:#fff;border-radius:4px;cursor:pointer">✓</button>';
+        btn.after(wrap);
         return;
     }
-    var slot = btn.nextElementSibling.value || '';
+    var sel = btn.nextElementSibling.querySelector('select');
+    var dtInput = btn.nextElementSibling.querySelector('input');
+    var slot = sel.value === 'custom' ? dtInput.value : sel.value;
     try {
         var fd = new FormData();
         fd.append('review_json', JSON.stringify(reviewData));
@@ -809,7 +814,8 @@ async function batchPublish(vi, btn, force) {
     var reviewData = window._batchReviews[vi];
     var videoInfo = window._batchVideos[vi];
     if (!reviewData || !videoInfo) { alert('Dữ liệu không tìm thấy'); return; }
-    var platform = videoInfo.platform;
+    var isForce = (force === true);
+    var platform = (typeof force === 'string') ? force : videoInfo.platform;
     var videoUrl = videoInfo.url;
     var status = btn.parentElement.querySelector('.bp-status');
     var label = {tiktok:'TikTok',facebook:'Facebook Reels',youtube:'YouTube Shorts'}[platform] || platform;
@@ -820,7 +826,7 @@ async function batchPublish(vi, btn, force) {
         fd.append('review_json', JSON.stringify(reviewData));
         fd.append('video_url', videoUrl);
         fd.append('platforms', platform);
-        if (force) fd.append('force', '1');
+        if (isForce) fd.append('force', '1');
         var pageSelect = btn.parentElement.querySelector('.fb-page-sel');
         if (pageSelect && pageSelect.value) fd.append('page_id', pageSelect.value);
         var resp = await fetch('/publish', {method: 'POST', body: fd});

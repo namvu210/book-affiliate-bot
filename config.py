@@ -57,7 +57,7 @@ def get_audio_duration(path: str) -> float | None:
         return None
 
 # Voice
-DEFAULT_VOICE_SPEED = 120
+DEFAULT_VOICE_SPEED = 175
 
 # AffiPad
 AFFIPAD_API_KEY = os.getenv("AFFIPAD_API_KEY", "")

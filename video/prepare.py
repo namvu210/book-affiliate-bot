@@ -139,7 +139,9 @@ async def render_video(inp: VideoInput) -> dict:
     hook_val = platform_data.get("hook", "")
     log.info(f"Video render: hook='{hook_val[:50]}', cta='{cta_val[:50]}', images={len(media_paths)}, intro={inp.show_intro}, outro={inp.show_outro}")
     video_path = str(output_path(ts, f"{inp.platform}.mp4"))
-    generate_tiktok_video(
+    import asyncio
+    await asyncio.to_thread(
+        generate_tiktok_video,
         audio_path=audio_path, output_path=video_path,
         book_title=book.get("title", ""),
         social_post=platform_data.get("social_post", ""),

@@ -1,5 +1,6 @@
 """Video rendering pipeline — hybrid PIL effects + ffmpeg animation."""
 
+import re
 import subprocess
 import tempfile
 from pathlib import Path
@@ -188,7 +189,7 @@ def _render_pil_pipeline(
         intro_img = _make_slide(first_bg or intro_bg_path, W, H, (15, 15, 35))
         d = ImageDraw.Draw(intro_img)
         # Hook as main text (bold, attention-grabbing) — hook only, no product title
-        intro_text = hook or book_title
+        intro_text = re.sub(r'\[[a-zA-Z_ ]+\]', '', hook or book_title).strip()
         tf = get_font(56, bold=True)
         main_lines = wrap_text(strip_emoji(intro_text), tf, W - 120, d)[:3]
         total_h = len(main_lines) * 72
@@ -227,12 +228,60 @@ def _render_pil_pipeline(
         sent_to_img = [min(int(i * n_img / n_sent), n_img - 1) for i in range(n_sent)]
 
     time_elapsed = 0.0
-    use_cache = img_effect == "none" and img_style in ("none", "")
+    use_cache = img_effect == "none" and img_style in ("none", "") and not transition_type
     prev_cache_key = None
     prev_frame_bytes = None
+    prev_img_idx = -1
+    # Determine transition type from img_effect
+    from video.effects import apply_transition, TRANSITION_FRAMES
+    transition_type = {"whip_pan": "whip_pan", "glitch_trans": "glitch_trans", "shutter": "shutter", "zoom_through": "zoom_through", "split_reveal": "split_reveal", "velocity": "zoom_through"}.get(img_effect, "")
+    # If using a transition effect, base motion is ken_burns
+    base_effect = "ken_burns" if transition_type else img_effect
+
+    # Velocity edit: modify frame allocation (first/last slow, middle fast)
+    if img_effect == "velocity" and len(int_frames) > 2:
+        total_f = sum(int_frames)
+        n_s = len(int_frames)
+        # First and last get 2x weight, middle gets 0.6x
+        vel_weights = [2.0 if i == 0 or i == n_s - 1 else 0.6 for i in range(n_s)]
+        vel_total = sum(vel_weights)
+        int_frames = [max(1, round(w / vel_total * total_f)) for w in vel_weights]
+        diff = total_f - sum(int_frames)
+        if diff:
+            int_frames[0] += diff
+
+    # Beat detection for flash+zoom sync
+    beat_times: set[int] = set()  # frame numbers that are on a beat
+    if music_file and Path(music_file).exists():
+        from video.beats import detect_beats
+        beats = detect_beats(music_file)
+        intro_sec = intro_frames / fps
+        for bt in beats:
+            # Offset beats by intro duration (music starts at frame 0 of video)
+            frame_num = int(bt * fps)
+            # Mark this frame and next frame for the flash effect
+            beat_times.add(frame_num)
+            beat_times.add(frame_num + 1)
+
     for sent_idx, sentence in enumerate(sentences):
         sent_frames = int_frames[sent_idx] if sent_idx < len(int_frames) else 1
         img_idx = sent_to_img[sent_idx] if sent_idx < len(sent_to_img) else len(loaded_imgs) - 1
+
+        # Insert transition frames when image changes
+        if transition_type and prev_img_idx >= 0 and img_idx != prev_img_idx and sent_frames > TRANSITION_FRAMES * 2:
+            for tf in range(TRANSITION_FRAMES):
+                progress = (tf + 1) / (TRANSITION_FRAMES + 1)
+                frame = apply_transition(loaded_imgs[prev_img_idx], loaded_imgs[img_idx], progress, transition_type, size)
+                if logo_img:
+                    frame = paste_logo(frame, logo_img, logo_position)
+                if frame.size != (W, H):
+                    frame = frame.resize((W, H), Image.LANCZOS)
+                if frame.mode != "RGB":
+                    frame = frame.convert("RGB")
+                ffmpeg_proc.stdin.write(frame.tobytes())
+            sent_frames -= TRANSITION_FRAMES  # reduce remaining frames to keep timing
+
+        prev_img_idx = img_idx
 
         for f in range(sent_frames):
             gp = min(1.0, (time_elapsed + f / fps) / duration)
@@ -246,12 +295,21 @@ def _render_pil_pipeline(
                 ffmpeg_proc.stdin.write(prev_frame_bytes)
             else:
                 src = loaded_imgs[img_idx]
-                bg = apply_effect(src, img_effect, gp, lp, loaded_imgs, img_idx, size, zoom_ratio)
+                bg = apply_effect(src, base_effect, gp, lp, loaded_imgs, img_idx, size, zoom_ratio)
                 if img_style != "none":
                     bg = apply_effect(bg, img_style, gp, lp, loaded_imgs, img_idx, size, zoom_ratio)
                 frame = draw_word_highlight_frame(bg, sentence, wp, size, subtitle_style, highlight_color)
                 if logo_img:
                     frame = paste_logo(frame, logo_img, logo_position)
+                # Beat-sync flash + zoom
+                if beat_times:
+                    abs_frame = int(time_elapsed * fps) + f
+                    if abs_frame in beat_times:
+                        # Zoom burst: 5% scale from center
+                        zw, zh = int(W * 0.95), int(H * 0.95)
+                        frame = frame.crop(((W-zw)//2, (H-zh)//2, (W+zw)//2, (H+zh)//2)).resize((W, H), Image.LANCZOS)
+                        # White flash overlay 25% opacity
+                        frame = Image.blend(frame, Image.new("RGB", (W, H), (255, 255, 255)), 0.25)
                 if frame.size != (W, H):
                     frame = frame.resize((W, H), Image.LANCZOS)
                 if frame.mode != "RGB":

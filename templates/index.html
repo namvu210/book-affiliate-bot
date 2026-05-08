@@ -66,13 +66,6 @@
         </label>
         <span id="shopee-poll-status" style="font-size:.8em;color:#999"></span>
     </div>
-    <div style="background:#fff;padding:8px 20px;border-radius:8px;margin-bottom:12px;box-shadow:0 2px 8px rgba(0,0,0,.06);display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:.85em">
-        <span>📦 Kéo vào bookmark bar →</span>
-        <a id="shopee-bookmarklet" href="javascript:(function(){try{var%20CDN='susercontent.com',seen={},imgs=[],vids=[];function%20addImg(s){if(!s||s.indexOf(CDN)<0||seen[s])return;s=s.replace(/@resize_w[^\s]*/g,'').replace(/\?.*$/,'');if(!seen[s]){seen[s]=1;imgs.push(s);}}function%20addVid(s){if(!s||seen[s])return;if(s.indexOf(CDN)>-1||s.indexOf('.mp4')>-1){seen[s]=1;vids.push(s);}}var%20hero=document.querySelector('img[elementtiming*=hero],img[alt*=Product]');if(hero){var%20c=hero.parentElement;for(var%20i=0;i<8&&c;i++){if(c.querySelectorAll('img[src*=susercontent]').length>=3)break;c=c.parentElement;}if(c)c.querySelectorAll('img').forEach(function(el){addImg(el.src);addImg(el.dataset.src);if(el.srcset)(el.srcset.match(/https?:\/\/[^\s,]+/g)||[]).forEach(addImg);});}var%20v=document.querySelector('video%20source,video[src]');if(v)addVid(v.src||'');var%20title=document.title.split('-Shopee')[0].split('|')[0].trim();var%20data=JSON.stringify({images:imgs,videos:vids,title:title,url:location.href});navigator.clipboard.writeText('SHOPEE_DATA:'+data).then(function(){alert('\u2705%20'+imgs.length+'%20ảnh%20+%20'+vids.length+'%20video!\nBấm%20📋%20Dán%20từ%20Shopee%20trên%20Bot');}).catch(function(){window.prompt('Copy:','SHOPEE_DATA:'+data);});}catch(e){alert(e.message);}})();"
-           style="background:#ee4d2d;color:#fff;padding:6px 14px;border-radius:6px;font-weight:600;text-decoration:none;cursor:grab;white-space:nowrap"
-           title="Kéo nút này vào thanh bookmark. Mở trang sản phẩm Shopee rồi bấm để lấy ảnh & thông tin.">📦 Lấy ảnh Shopee</a>
-        <button onclick="pasteShopeeData()" class="btn" style="padding:6px 14px;font-size:.85em;margin:0;background:#16213e">📋 Dán từ Shopee</button>
-    </div>
     <div id="platform-bar" style="background:#fff;padding:8px 20px;border-radius:8px;margin-bottom:12px;box-shadow:0 2px 8px rgba(0,0,0,.06);display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:.85em">
         <span style="font-weight:600">📤 Nền tảng:</span>
         <span id="plat-tiktok">⏳ TikTok</span>
@@ -242,11 +235,8 @@
             <input type="hidden" name="custom_audience" id="custom-audience-json" value="">
             <label>Độ dài review:</label>
             <div style="display:flex;gap:16px;flex-wrap:wrap">
-                <label style="font-size:.85em">📘 Facebook: <span id="wc-url-fb">130</span> từ
-                    <input type="range" name="word_count_fb" min="80" max="200" value="130" oninput="document.getElementById('wc-url-fb').textContent=this.value">
-                </label>
-                <label style="font-size:.85em">🎵 TikTok: <span id="wc-url-tk">100</span> từ
-                    <input type="range" name="word_count_tk" min="70" max="130" value="100" oninput="document.getElementById('wc-url-tk').textContent=this.value">
+                <label style="font-size:.85em">📝 Độ dài review: <span id="wc-url-fb">120</span> từ
+                    <input type="range" name="word_count_fb" min="80" max="200" value="120" step="10" oninput="document.getElementById('wc-url-fb').textContent=this.value">
                 </label>
             </div>
             <button type="submit" class="btn">🚀 Tạo Review</button>
@@ -276,11 +266,9 @@
             <label style="font-size:.85em"><input type="checkbox" id="batch-plat-youtube"> ▶️ YouTube</label>
         </div>
         <div style="display:flex;gap:12px;margin-top:8px;align-items:center;flex-wrap:wrap">
-            <label style="font-size:.85em">📝 TikTok: <span id="batch-wc-val">100</span> từ
-                <input type="range" id="batch-word-count" min="70" max="130" value="100" step="10" style="width:80px" oninput="document.getElementById('batch-wc-val').textContent=this.value">
+            <label style="font-size:.85em">📝 Độ dài review: <span id="batch-wc-fb-val">120</span> từ
+                <input type="range" id="batch-word-count-fb" min="80" max="200" value="120" step="10" style="width:160px" oninput="document.getElementById('batch-wc-fb-val').textContent=this.value">
             </label>
-            <label style="font-size:.85em">📘 Facebook: <span id="batch-wc-fb-val">130</span> từ
-                <input type="range" id="batch-word-count-fb" min="80" max="200" value="130" step="10" style="width:80px" oninput="document.getElementById('batch-wc-fb-val').textContent=this.value">
             </label>
             <label style="font-size:.85em">🏷️ Watermark:
                 <input type="text" id="batch-logo-text" placeholder="Text logo..." style="padding:4px 8px;border-radius:6px;border:1px solid #ddd;font-size:.85em;width:130px">
@@ -374,6 +362,12 @@ function switchTab(name) {
     // Hide voice settings on history tab
     var voiceBar = document.getElementById('voice-settings-bar');
     if (voiceBar) voiceBar.style.display = (name === 'history') ? 'none' : 'flex';
+    // Auto-switch voice: batch=elevenlabs, single=edge
+    var voiceSel = document.getElementById('global-voice-type');
+    if (voiceSel) {
+        voiceSel.value = (name === 'batch') ? 'elevenlabs' : 'edge';
+        if (typeof onGlobalVoiceChange === 'function') onGlobalVoiceChange();
+    }
 }
 
 function copyText(id) {
@@ -436,7 +430,7 @@ async function generateSpeech(platform) {
     const textarea = document.getElementById('post-' + platform);
     const text = textarea.value.trim();
     if (!text) { alert('Nhập nội dung trước!'); return; }
-    const voiceType = document.getElementById('voice-' + platform)?.value || 'gtts';
+    const voice = getGlobalVoice();
     const btn = document.getElementById('btn-speech-' + platform);
     const audioDiv = document.getElementById('audio-' + platform);
     btn.disabled = true;
@@ -445,10 +439,10 @@ async function generateSpeech(platform) {
         const fd = new FormData();
         fd.append('text', text);
         fd.append('platform', platform);
-        fd.append('voice_type', voiceType);
-        fd.append('speed', document.getElementById('spd-' + platform)?.value || '125');
-        var elVoiceSel = document.getElementById('el-voice-' + platform);
-        if (voiceType === 'elevenlabs' && elVoiceSel?.value) fd.append('elevenlabs_voice_id', elVoiceSel.value);
+        fd.append('voice_type', voice.type);
+        fd.append('speed', 100 + parseInt(voice.speed));
+        fd.append('edge_voice', voice.edgeVoice);
+        if (voice.type === 'elevenlabs' && voice.voiceId) fd.append('elevenlabs_voice_id', voice.voiceId);
         const resp = await fetch('/generate-speech', { method: 'POST', body: fd });
         if (!resp.ok) { const err = await resp.json(); throw new Error(err.detail || 'Lỗi'); }
         const data = await resp.json();
@@ -527,12 +521,13 @@ function renderResult(data) {
         window._productImages = localImgs.length ? localImgs : imgs;
     }
 
-    // Render platform results
-    const platforms = data.facebook ? ['facebook', 'tiktok'] : [null];
+    // Render platform results — single unified review
+    const platforms = [data.facebook ? 'facebook' : null].filter(Boolean);
+    if (!platforms.length && data.review) platforms.push(null);
     for (const p of platforms) {
         const d = p ? data[p] : data;
         if (!d) continue;
-        const label = p === 'tiktok' ? '🎵 TikTok' : '📘 Facebook';
+        const label = '📝 Review';
         const postText = d.social_post || d.review || '';
 
         html += `<div class="result-card">
@@ -542,16 +537,6 @@ function renderResult(data) {
             </h3>
             <textarea id="post-${p||'single'}" rows="10" style="width:100%;padding:12px;border:1.5px solid #ddd;border-radius:8px;font-size:.9em;line-height:1.6;font-family:inherit;resize:vertical">${postText}</textarea>
             <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                <select id="voice-${p||'single'}" style="padding:6px 10px;border-radius:6px;border:1.5px solid #ddd;font-size:.85em" onchange="toggleELVoices(this,'${p||'single'}')">
-                    <option value="gtts">🤖 gTTS (nhanh)</option>
-                    <option value="elevenlabs">🎙️ Clone giọng (ElevenLabs)</option>
-                </select>
-                <select id="el-voice-${p||'single'}" style="padding:6px 10px;border-radius:6px;border:1.5px solid #ddd;font-size:.85em;display:none">
-                    <option value="">Đang tải giọng...</option>
-                </select>
-                <label style="font-size:.8em;display:inline-flex;align-items:center;gap:4px">🗣️<span id="spd-val-${p||'single'}">{{default_voice_speed}}</span>%
-                    <input type="range" id="spd-${p||'single'}" min="50" max="200" value="{{default_voice_speed}}" step="10" style="width:80px" oninput="document.getElementById('spd-val-${p||'single'}').textContent=this.value">
-                </label>
                 <button class="btn" onclick="generateSpeech('${p||'single'}')" id="btn-speech-${p||'single'}" style="padding:8px 20px;font-size:.9em">
                     🔊 Tạo giọng nói
                 </button>
@@ -573,6 +558,16 @@ function renderResult(data) {
                 <ul style="padding-left:20px">${d.key_points.map(p => '<li>' + p + '</li>').join('')}</ul>
             </div>`;
         }
+
+        // Caption preview (what will be posted to social media)
+        const captionText = (d.social_post || '').replace(/\[[a-zA-Z_ ]+\]/g, '').replace(/  +/g, ' ').trim();
+        const hashtags = (d.hashtags || []).map(h => '#' + h.replace(/^#/, '')).join(' ');
+        const affLink = data.affiliate_link || data.book?.shopee_url || '';
+        const fullCaption = captionText + (hashtags ? '\n\n' + hashtags : '') + (affLink ? '\n\n🛒 Mua ngay: ' + affLink : '');
+        html += `<div class="result-card">
+            <h3>📤 Caption khi đăng <button class="copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('caption-preview').textContent)">📋 Copy</button></h3>
+            <pre id="caption-preview" style="white-space:pre-wrap;background:#f8f9fa;padding:12px;border-radius:8px;font-family:inherit;font-size:.9em;line-height:1.6;border:1px solid #eee">${fullCaption}</pre>
+        </div>`;
     }
 
     // Video generation section
@@ -626,6 +621,12 @@ function renderResult(data) {
                     <label style="font-size:.8em">Chuyển động:
                         <select id="img-effect" style="padding:4px 8px;border-radius:4px;border:1px solid #ddd;font-size:.85em">
                             <option value="ken_burns">Ken Burns</option>
+                            <option value="whip_pan">Whip Pan</option>
+                            <option value="glitch_trans">Glitch</option>
+                            <option value="shutter">Shutter Flash</option>
+                            <option value="zoom_through">Zoom Through</option>
+                            <option value="split_reveal">Split Reveal</option>
+                            <option value="velocity">Velocity Edit</option>
                             <option value="crossfade">Crossfade</option>
                             <option value="zoom_center">Zoom trung tâm</option>
                             <option value="parallax">Parallax</option>
@@ -677,7 +678,7 @@ function renderResult(data) {
                 </label>
             </div>
             ${vidImgs.length > 0 ? `
-                <p style="font-size:.85em;color:#666;margin-bottom:8px">Chọn tối đa 16 ảnh cho video:</p>
+                <p style="font-size:.85em;color:#666;margin-bottom:8px">Chọn tối đa 16 ảnh cho video:</p>` : '<p style="font-size:.85em;color:#999;margin-bottom:8px">Chưa có ảnh — bấm "🖼️ Tạo ảnh AI" hoặc upload bên dưới</p>'}
                 <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px" id="vid-img-gallery">
                     ${vidImgs.map((img, i) => {
                         const isAI = img.includes('ai_images');
@@ -692,7 +693,6 @@ function renderResult(data) {
                         </label>`;
                     }).join('')}
                 </div>
-            ` : '<p style="font-size:.85em;color:#999;margin-bottom:8px">Chưa có ảnh — upload ảnh ở trên hoặc thêm bên dưới</p>'}
             <label style="font-weight:normal;font-size:.85em;color:#666">Hoặc upload thêm ảnh/video:
                 <input type="file" id="video-media-upload" accept="image/*,video/*" multiple style="margin-left:8px" onchange="previewVideoUploads(this)">
             </label>
@@ -809,6 +809,11 @@ document.getElementById('form-url').addEventListener('submit', e => {
         const bmImgs = Array.from(checked).map(cb => cb.dataset.url);
         fd.set('bookmarklet_images', JSON.stringify(bmImgs));
     }
+    // Include voice settings from global selector
+    const voice = getGlobalVoice();
+    fd.set('voice_type', voice.type);
+    fd.set('voice_speed', 100 + parseInt(voice.speed));
+    fd.set('voice_id', voice.voiceId);
     submitForm('/from-url', fd);
 });
 
@@ -1132,7 +1137,8 @@ async function generateVideo() {
         h += ` <button class="btn" onclick="publishVideo('${data.video_url}','facebook')" style="margin-top:8px;font-size:.9em;background:#1877f2">📤 Đăng Facebook Reels</button>`;
         h += ` <button class="btn" onclick="publishVideo('${data.video_url}','tiktok')" style="margin-top:8px;font-size:.9em;background:#000">🎵 Đăng TikTok</button>`;
         h += ` <button class="btn" onclick="publishVideo('${data.video_url}','youtube')" style="margin-top:8px;font-size:.9em;background:#c00">▶️ YouTube Shorts</button>`;
-        h += `<br><select id="schedule-slot" style="padding:4px 8px;border-radius:6px;border:1px solid #ddd;font-size:.8em;margin-top:8px"><option value="">Slot tiếp theo</option><option value="07:00">07:00</option><option value="12:00">12:00</option><option value="19:30">19:30</option><option value="21:30">21:30</option></select>`;
+        h += `<br><select id="schedule-slot" style="padding:4px 8px;border-radius:6px;border:1px solid #ddd;font-size:.8em;margin-top:8px" onchange="document.getElementById('schedule-custom-dt').style.display=this.value==='custom'?'inline':'none'"><option value="">Slot tiếp theo</option><option value="08:30">08:30</option><option value="12:00">12:00</option><option value="19:00">19:00</option><option value="21:30">21:30</option><option value="custom">📅 Tùy chọn...</option></select>`;
+        h += `<input type="datetime-local" id="schedule-custom-dt" style="padding:4px 8px;border-radius:6px;border:1px solid #ddd;font-size:.8em;margin-left:4px;display:none">`;
         h += ` <button class="btn" onclick="scheduleVideo('${data.video_url}','facebook')" style="margin-top:8px;font-size:.9em;background:#f59e0b">⏰ Lên lịch</button>`;
         h += `<span id="publish-status" style="font-size:.85em;margin-left:8px"></span>`;
         vr.innerHTML = h;
@@ -1473,7 +1479,8 @@ async function publishVideo(videoUrl, platform, force) {
 
 async function scheduleVideo(videoUrl, platform) {
     var status = document.getElementById('publish-status');
-    var slot = document.getElementById('schedule-slot')?.value || '';
+    var selVal = document.getElementById('schedule-slot')?.value || '';
+    var slot = selVal === 'custom' ? (document.getElementById('schedule-custom-dt')?.value || '') : selVal;
     var pageId = document.getElementById('fb-page-select')?.value || '';
     try {
         var fd = new FormData();
@@ -1539,7 +1546,10 @@ async function generateAiImages() {
         fd.append('title', data.book?.title || '');
         fd.append('persona_name', 'Khách hàng');
         fd.append('persona_focus', persona.key_points?.[0] || '');
-        fd.append('product_images', JSON.stringify(data.product_images || []));
+        fd.append('product_images', JSON.stringify(
+            Array.from(document.querySelectorAll('.vid-img-check:checked')).map(c => c.value).filter(u => !u.includes('ai_images'))
+            .concat(data.product_images || []).filter((v,i,a) => a.indexOf(v)===i).slice(0, 6)
+        ));
         var resp = await fetch('/generate-ai-images', {method: 'POST', body: fd});
         var result = await resp.json();
         var aiImgs = result.ai_images || [];
@@ -1701,8 +1711,8 @@ async function scheduleAction(jobId, action) {
     if (action === 'now') {
         await fetch('/api/schedule/publish-now', {method:'POST', body:fd});
     } else if (action === 'reschedule') {
-        var slots = ['07:00','12:00','19:30','21:30'];
-        var slot = slots[(slots.indexOf('19:30') + 1) % slots.length];
+        var slots = ['08:30','12:00','19:00','21:30'];
+        var slot = slots[(slots.indexOf('19:00') + 1) % slots.length];
         var pick = document.createElement('select');
         pick.innerHTML = slots.map(s => '<option value="'+s+'">'+s+'</option>').join('');
         pick.style.cssText = 'margin-left:4px';

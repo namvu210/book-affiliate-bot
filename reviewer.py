@@ -106,7 +106,17 @@ def build_review_prompt(
     cta_examples = random.sample(cta_pool, k=3)
     banned = f"KHÔNG dùng các cụm từ sau lần này: {', '.join(repr(w) for w in banned_subset)}. Dùng từ ngữ tự nhiên, đa dạng."
     platform_guide = {
-        "facebook": f"Bài viết Facebook ĐÚNG {word_count} từ (KHÔNG được vượt quá), có emoji, chia đoạn rõ ràng, kết thúc bằng CTA mua sản phẩm. Viết theo góc nhìn KOL/người dùng thực sự đã trải nghiệm sản phẩm, KHÔNG viết như shop bán hàng. Dùng ngôi thứ nhất (mình/tôi), chia sẻ cảm nhận cá nhân, kể trải nghiệm thực tế.",
+        "facebook": f"""Bài viết ĐÚNG {word_count} từ (KHÔNG được vượt quá), BẮT BUỘC có 3-5 emoji rải đều trong bài (💖😍✨🔥👉...), chia đoạn rõ ràng, kết thúc bằng CTA mua sản phẩm. Viết theo góc nhìn KOL/người dùng thực sự đã trải nghiệm sản phẩm, KHÔNG viết như shop bán hàng. Dùng ngôi thứ nhất (mình/tôi), chia sẻ cảm nhận cá nhân, kể trải nghiệm thực tế. Viết dạng văn nói tự nhiên, có nhịp điệu.
+
+GIỌNG NÓI (KHÔNG tính vào số từ):
+Chèn 4-6 audio tag vào bài viết. Kết hợp tag + dấu câu cho hiệu ứng mạnh.
+- Cảm xúc: [excited], [surprised], [curious], [happy], [thoughtful], [whispers], [sarcastic], [mischievously]
+- Phi ngôn ngữ: [laughs], [sighs], [gasps], [chuckles], [exhales], [snorts]
+- Dấu … tạo khoảng dừng: "Và kết quả là…"
+- CHỮ IN HOA nhấn mạnh: "THỰC SỰ hay"
+- Kết hợp tag + dấu câu: "[curious] Mà khoan… các bạn có BIẾT không? [gasps] Sản phẩm này ĐỈNH! [laughs]"
+- KHUYẾN KHÍCH kết hợp tag + dấu câu liên tục để tạo nhịp điệu tự nhiên, biểu cảm mạnh.
+""",
         "tiktok": f"""Script TikTok ĐÚNG {word_count} từ (KHÔNG được vượt quá, KHÔNG tính audio tag trong []). Viết dạng văn nói tự nhiên, KHÔNG dùng timestamp như [0-3s]. Mở đầu bằng hook gây tò mò, ngắn gọn, có nhịp điệu. Viết như KOL đang nói chuyện với người xem, chia sẻ trải nghiệm cá nhân. KHÔNG viết như quảng cáo hay shop bán hàng.
 
 GIỌNG NÓI (KHÔNG tính vào số từ):
@@ -186,7 +196,13 @@ def generate_review(
     audience = custom_audience or AUDIENCES.get(audience_key, AUDIENCES["phu-huynh-lop-5"])
     prompt = build_review_prompt(book, audience, platform, word_count)
     try:
-        return generate_json(prompt)
+        result = generate_json(prompt)
+        # Strip audio tags from fields displayed as text (not spoken)
+        import re
+        for field in ("hook", "cta"):
+            if result.get(field):
+                result[field] = re.sub(r'\[[a-zA-Z_ ]+\]', '', result[field]).strip()
+        return result
     except (json.JSONDecodeError, RuntimeError) as e:
         err = str(e)
         return {**_REVIEW_FALLBACK, "review": err}

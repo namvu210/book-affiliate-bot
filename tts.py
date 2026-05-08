@@ -15,10 +15,11 @@ VOICE_DIR.mkdir(exist_ok=True)
 def _sanitize(text: str, keep_audio_tags: bool = False) -> str:
     text = re.sub(r'\[\d+[-–]\d+s?\]', '', text)  # strip timestamps [0-3s]
     if not keep_audio_tags:
-        text = re.sub(r'\[[a-zA-Z_]+\]', '', text)  # strip audio tags [excited] for gTTS
+        text = re.sub(r'\[[a-zA-Z_ ]+\]', '', text)  # strip audio tags [excited] for gTTS
     text = strip_emoji(text)
     text = re.sub(r'#\w+', '', text)
     text = re.sub(r'https?://\S+', '', text)
+    text = re.sub(r'(?:www\.|\w+\.(?:com|vn|net|org|io|dev|co))\S*', '', text)  # bare URLs
     text = re.sub(r'[*_~`]', '', text)
     text = re.sub(r'\s+', ' ', text).strip()
     return text[:5000]
@@ -58,7 +59,7 @@ async def generate_audio(
     rate: str = "",
 ) -> str:
     """Generate speech audio. speed=100 is normal, 175 is 1.75x."""
-    clean = _sanitize(text, keep_audio_tags=(voice_type == "elevenlabs"))
+    clean = _sanitize(text, keep_audio_tags=(voice_type in ("elevenlabs", "edge")))
     if not clean:
         return ""
 
@@ -68,7 +69,7 @@ async def generate_audio(
         except Exception as e:
             import logging
             logging.getLogger("tts").warning(f"ElevenLabs failed, falling back to Edge TTS: {e}")
-            await _generate_edge(_sanitize(text, keep_audio_tags=False), output_path, edge_voice)
+            await _generate_edge(_sanitize(text, keep_audio_tags=True), output_path, edge_voice)
     elif voice_type == "edge":
         await _generate_edge(clean, output_path, edge_voice)
     else:
@@ -88,10 +89,44 @@ async def _generate_gtts(text: str, output_path: str) -> str:
     return output_path
 
 
+def _tags_to_edge_text(text: str) -> str:
+    """Convert ElevenLabs audio tags to natural pauses for Edge TTS."""
+    import re
+    # Non-verbal tags → ellipsis pause
+    pause_tags = ['sighs', 'laughs', 'gasps', 'chuckles', 'exhales', 'snorts',
+                  'short pause', 'long pause', 'inhales deeply', 'exhales sharply', 'clears throat']
+    for tag in pause_tags:
+        text = re.sub(rf'\[{tag}\]', ' ... ', text, flags=re.IGNORECASE)
+
+    # Emotion tags → brief pause
+    emotion_tags = ['excited', 'surprised', 'curious', 'happy', 'thoughtful',
+                    'whispers', 'sarcastic', 'mischievously', 'angry', 'sad', 'annoyed']
+    for tag in emotion_tags:
+        text = re.sub(rf'\[{tag}\]', ' — ', text, flags=re.IGNORECASE)
+
+    # Strip any remaining [tags]
+    text = re.sub(r'\[[a-zA-Z_ ]+\]', '', text)
+
+    # Fix ALL CAPS words (>2 chars) → Title Case to prevent letter-by-letter spelling
+    def _fix_caps(m):
+        w = m.group(0)
+        if len(w) <= 2:  # keep OK, AI, etc as-is
+            return w
+        return w.capitalize()
+    text = re.sub(r'\b[A-Z][A-Z.]{2,}\b', _fix_caps, text)
+
+    # Fix brand names with dots (MACS.OUTFIT → Macs Outfit)
+    text = re.sub(r'(\w)\.(\w)', r'\1 \2', text)
+
+    text = re.sub(r'  +', ' ', text).strip()
+    return text
+
+
 async def _generate_edge(text: str, output_path: str, voice: str = "vi-VN-HoaiMyNeural") -> str:
     """Generate speech using Microsoft Edge TTS (free, unlimited)."""
     import edge_tts
-    communicate = edge_tts.Communicate(text, voice)
+    clean = _tags_to_edge_text(text)
+    communicate = edge_tts.Communicate(clean, voice)
     await communicate.save(output_path)
     return output_path
 
