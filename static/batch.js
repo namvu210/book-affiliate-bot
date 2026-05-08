@@ -171,11 +171,15 @@ function addFilesToCard(card, files) {
         if (!files[i].type.startsWith('image/')) continue;
         var file = files[i];
         card._files.push(file);
+        var idx = card._files.length;
         var wrap = document.createElement('div');
         wrap.style.cssText = 'position:relative;display:inline-block;cursor:pointer';
         var img = document.createElement('img');
-        img.style.cssText = 'height:60px;border-radius:4px;object-fit:cover;border:2px solid transparent';
+        img.style.cssText = 'height:120px;border-radius:4px;object-fit:cover;border:2px solid transparent';
         img.src = URL.createObjectURL(file);
+        var numBadge = document.createElement('span');
+        numBadge.style.cssText = 'position:absolute;bottom:4px;left:4px;background:rgba(0,0,0,0.7);color:#fff;font-size:10px;padding:1px 5px;border-radius:4px;z-index:3';
+        numBadge.textContent = idx;
         // Click to toggle AI reference selection
         (function(c, w, im, fileRef) {
             w.addEventListener('click', function(e) {
@@ -211,9 +215,14 @@ function addFilesToCard(card, files) {
         })(card, wrap, file);
         wrap.appendChild(img);
         wrap.appendChild(btn);
+        wrap.appendChild(numBadge);
         thumbs.appendChild(wrap);
     }
     card.querySelector('.pc-dropzone').style.borderColor = '#4ecca3';
+    // Show image count
+    var countEl = card.querySelector('.pc-img-count');
+    if (!countEl) { countEl = document.createElement('span'); countEl.className = 'pc-img-count'; countEl.style.cssText = 'font-size:.8em;color:#666;margin-left:8px'; card.querySelector('.pc-dropzone').after(countEl); }
+    countEl.textContent = '📷 ' + card._files.length + ' ảnh';
     _updateAiLabel(card);
 }
 
@@ -252,6 +261,61 @@ document.addEventListener('DOMContentLoaded', function() { addProductCard(); });
 
 // === Batch State ===
 var _batchState = { products: [], currentIdx: 0, results: [] };
+
+function _saveBatchState() {
+    try {
+        var s = JSON.parse(JSON.stringify(_batchState, function(k, v) {
+            if (v instanceof File) return undefined;
+            return v;
+        }));
+        sessionStorage.setItem('batchState', JSON.stringify(s));
+        // Also save to server
+        fetch('/api/batch/save', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({batch_id: _batchState._batchId || '', reviews: _batchState.reviews || []})
+        }).then(function(r) { return r.json(); }).then(function(d) {
+            if (d.batch_id) _batchState._batchId = d.batch_id;
+        }).catch(function() {});
+    } catch(e) {}
+}
+
+function _restoreBatchState() {
+    // Try sessionStorage first (faster)
+    try {
+        var s = sessionStorage.getItem('batchState');
+        if (s) {
+            _batchState = JSON.parse(s);
+            if (_batchState.reviews && _batchState.reviews.length) {
+                batchStep2Render();
+                return true;
+            }
+        }
+    } catch(e) {}
+    // Fallback: restore from server
+    try {
+        var xhr = new XMLHttpRequest();
+        xhr.open('GET', '/api/batch/latest', false); // sync for page load
+        xhr.send();
+        if (xhr.status === 200) {
+            var job = JSON.parse(xhr.responseText);
+            if (job.reviews && job.reviews.length) {
+                _batchState.reviews = job.reviews;
+                _batchState._batchId = job.id;
+                batchStep2Render();
+                return true;
+            }
+        }
+    } catch(e) {}
+    return false;
+}
+
+// Restore on load
+if (typeof document !== 'undefined') {
+    document.addEventListener('DOMContentLoaded', function() {
+        _restoreBatchState();
+    });
+}
 
 async function startBatchReview() {
     var products = getProductCards();
@@ -426,6 +490,7 @@ async function batchStep2() {
         }
     }
     _batchState.reviews = allReviews;
+    _saveBatchState();
     progress.innerHTML = '';
     batchStep2aRender();
 }
@@ -517,7 +582,12 @@ async function batchStep2b() {
             var data = await resp.json();
             r.data = data;
             r.assetsDone = true;
-            batchLog('✅ Assets OK — images:' + (data.product_images||[]).length);
+            var aiStatus = data._ai_status || {};
+            var aiMsg = aiStatus.expected ? ' (AI: ' + (aiStatus.generated||0) + '/' + aiStatus.expected + ')' : '';
+            if (aiStatus.real_images < 5 && aiStatus.expected === 0) aiMsg = ' ⚠️ <5 ảnh, không tạo AI';
+            if (aiStatus.expected > 0 && aiStatus.generated < aiStatus.expected) r.aiIncomplete = true;
+            batchLog('✅ Assets OK — images:' + (data.product_images||[]).length + aiMsg);
+            _saveBatchState();
         } catch(e) {
             batchLog('❌ Assets: ' + e.message);
             r.assetsError = e.message;
@@ -550,6 +620,14 @@ function batchStep2Render() {
         } else if (!r.assetsDone) {
             html += ' <span style="color:#666">📝 Review ✅ — chưa tạo audio/ảnh</span>';
         } else {
+            var aiStatus = r.data?._ai_status || {};
+            if (aiStatus.real_images < 5 && !aiStatus.expected) {
+                html += ' <span style="color:orange;font-size:.8em">⚠️ Ít hơn 5 ảnh — không tạo AI images</span>';
+            }
+            if (r.aiIncomplete) {
+                html += ' <span style="color:orange;font-size:.8em">⚠️ AI ảnh thiếu (' + (aiStatus.generated||0) + '/' + aiStatus.expected + ')</span>';
+                html += ' <button class="btn" onclick="retryBatchAssets(' + ri + ')" style="padding:3px 10px;font-size:.8em;background:#f59e0b">🔄 AI ảnh</button>';
+            }
             var tk = r.data?.tiktok?.social_post || '';
             var fb = r.data?.facebook?.social_post || '';
             var tkAudio = r.data?.tiktok?.audio_url || '';
@@ -596,6 +674,7 @@ async function retryBatchAssets(ri) {
         r.data = data;
         r.assetsDone = true;
         r.assetsError = null;
+        _saveBatchState();
         batchLog('✅ Retry assets OK');
         batchStep2Render();
     } catch(e) {
@@ -611,10 +690,22 @@ async function batchStep3() {
     results.innerHTML = '<h3 style="margin-bottom:12px">⏳ Bước 3: Tạo Video...</h3>';
 
     // Build video tasks — ONE video per review (shared across platforms)
+    // Skip products without audio or images
     var tasks = [];
+    var skipped = 0;
+    var skipReasons = [];
     for (var i = 0; i < reviews.length; i++) {
+        var hasAudio = reviews[i].data?.facebook?.audio_url || reviews[i].data?.tiktok?.audio_url;
+        var hasImages = (reviews[i].data?.product_images || []).length > 0;
+        if (!hasAudio || !hasImages) {
+            var reason = !hasAudio ? 'thiếu audio' : 'thiếu ảnh';
+            batchLog('⏭️ Bỏ qua ' + (reviews[i].product.title||'').substring(0,30) + ' — ' + reason);
+            skipped++;
+            continue;
+        }
         tasks.push({ review: reviews[i], platform: 'facebook' });
     }
+    if (skipped) batchLog('⚠️ ' + skipped + ' sản phẩm bỏ qua. Tạo audio/ảnh trước rồi thử lại.');
 
     // Run with concurrency limit of 2
     var videoResults = [];

@@ -55,6 +55,7 @@ async def generate_audio(
     voice_type: str = "edge",
     elevenlabs_voice_id: str = "",
     edge_voice: str = "vi-VN-HoaiMyNeural",
+    no_fallback: bool = False,
     # deprecated — ignored, use speed instead
     rate: str = "",
 ) -> str:
@@ -67,6 +68,8 @@ async def generate_audio(
         try:
             await _generate_elevenlabs(clean, output_path, elevenlabs_voice_id)
         except Exception as e:
+            if no_fallback:
+                raise
             import logging
             logging.getLogger("tts").warning(f"ElevenLabs failed, falling back to Edge TTS: {e}")
             await _generate_edge(_sanitize(text, keep_audio_tags=True), output_path, edge_voice)

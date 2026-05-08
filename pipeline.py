@@ -25,7 +25,7 @@ class PipelineInput:
     image_urls: list[str] = field(default_factory=list)
     voice_type: str = "edge"
     elevenlabs_voice_id: str = "T4jrQr9x0Y24833yKCWR"
-    voice_speed: int = 175
+    voice_speed: int = 140
     platforms: list[str] = field(default_factory=lambda: ["facebook", "tiktok"])
 
 

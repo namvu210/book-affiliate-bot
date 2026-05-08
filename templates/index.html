@@ -192,7 +192,7 @@
             <option value="vi-VN-NamMinhNeural">NamMinh (nam)</option>
         </select>
         <label>Tốc độ giọng: <span id="global-spd-val">1.75</span>x
-            <input type="range" id="global-voice-speed" min="0" max="100" value="75" step="5" style="width:80px" oninput="document.getElementById('global-spd-val').textContent=((100+Number(this.value))/100).toFixed(2)">
+            <input type="range" id="global-voice-speed" min="-20" max="60" value="40" step="5" style="width:80px" oninput="document.getElementById('global-spd-val').textContent=((100+Number(this.value))/100).toFixed(2)">
         </label>
     </div>
 
@@ -327,7 +327,7 @@ function getGlobalVoice() {
     var type = document.getElementById('global-voice-type')?.value || 'edge';
     var voiceId = document.getElementById('global-el-voice')?.value || '';
     var edgeVoice = document.getElementById('global-edge-voice')?.value || 'vi-VN-HoaiMyNeural';
-    var speed = document.getElementById('global-voice-speed')?.value || '75';
+    var speed = document.getElementById('global-voice-speed')?.value || '40';
     return { type: type, voiceId: voiceId, edgeVoice: edgeVoice, speed: speed };
 }
 (function loadGlobalVoices() {
@@ -366,6 +366,7 @@ function switchTab(name) {
     var voiceSel = document.getElementById('global-voice-type');
     if (voiceSel) {
         voiceSel.value = (name === 'batch') ? 'elevenlabs' : 'edge';
+        voiceSel.disabled = (name === 'batch');
         if (typeof onGlobalVoiceChange === 'function') onGlobalVoiceChange();
     }
 }
@@ -1636,8 +1637,15 @@ async function loadHistory() {
         var now = new Date();
         var currentTime = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
         var pending = jobs.filter(j => j.status === 'pending');
-        var missed = pending.filter(j => j.slot < currentTime);
-        var upcoming = pending.filter(j => j.slot >= currentTime);
+        var todayStr = (now.getMonth()+1).toString().padStart(2,'0') + '/' + now.getDate().toString().padStart(2,'0');
+        var missed = pending.filter(j => {
+            if (j.slot.includes('T')) return new Date(j.slot) < now;
+            return j.slot < currentTime;
+        });
+        var upcoming = pending.filter(j => {
+            if (j.slot.includes('T')) return new Date(j.slot) >= now;
+            return j.slot >= currentTime;
+        });
 
         var html = '';
         if (missed.length) {
@@ -1648,7 +1656,8 @@ async function loadHistory() {
                 var platIcon = {facebook:'📘',tiktok:'🎵',youtube:'▶️'}[j.platform] || j.platform;
                 var vidLink = j.video_url ? '<a href="' + j.video_url + '" target="_blank" title="Xem video">' + platIcon + '</a>' : platIcon;
                 html += '<div style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:.85em">';
-                html += '<span>' + vidLink + ' ' + title + ' (lịch ' + j.slot + ')</span>';
+                var slotDisplay = j.slot.includes('T') ? j.slot.slice(5,10).replace('-','/') + ' ' + j.slot.slice(11,16) : todayStr + ' ' + j.slot;
+                html += '<span>' + vidLink + ' ' + title + ' (lịch ' + slotDisplay + ')</span>';
                 html += '<button onclick="scheduleAction(\'' + j.id + '\',\'now\')" style="padding:2px 8px;border:none;background:#1877f2;color:#fff;border-radius:4px;cursor:pointer;font-size:.8em">📤 Đăng ngay</button>';
                 html += '<button onclick="scheduleAction(\'' + j.id + '\',\'reschedule\')" style="padding:2px 8px;border:none;background:#f59e0b;color:#fff;border-radius:4px;cursor:pointer;font-size:.8em">⏰ Lên lịch lại</button>';
                 html += '<button onclick="scheduleAction(\'' + j.id + '\',\'cancel\')" style="padding:2px 8px;border:none;background:#eee;border-radius:4px;cursor:pointer;font-size:.8em">🗑️ Bỏ qua</button>';
@@ -1658,13 +1667,19 @@ async function loadHistory() {
         }
         if (upcoming.length) {
             html += '<div style="background:#ecfdf5;border:1px solid #10b981;border-radius:8px;padding:12px;margin-bottom:12px">';
-            html += '<strong>⏰ Sắp đăng (' + upcoming.length + ')</strong>';
+            html += '<strong>📅 Lịch đăng bài (' + upcoming.length + ')</strong>';
+            upcoming.sort(function(a,b) {
+                var sa = a.slot.includes('T') ? a.slot : now.toISOString().slice(0,11) + a.slot;
+                var sb = b.slot.includes('T') ? b.slot : now.toISOString().slice(0,11) + b.slot;
+                return sa.localeCompare(sb);
+            });
             upcoming.forEach(function(j) {
                 var title = (j.review_data?.book?.title || '').substring(0, 40);
                 var platIcon = {facebook:'📘',tiktok:'🎵',youtube:'▶️'}[j.platform] || j.platform;
                 var vidLink = j.video_url ? '<a href="' + j.video_url + '" target="_blank" title="Xem video">' + platIcon + '</a>' : platIcon;
                 html += '<div style="display:flex;align-items:center;gap:8px;margin-top:6px;font-size:.85em">';
-                html += '<span>' + vidLink + ' ' + title + ' → ' + j.slot + '</span>';
+                var slotDisplay2 = j.slot.includes('T') ? j.slot.slice(5,10).replace('-','/') + ' ' + j.slot.slice(11,16) : todayStr + ' ' + j.slot;
+                html += '<span>' + vidLink + ' ' + title + ' → ' + slotDisplay2 + '</span>';
                 html += '<button onclick="scheduleAction(\'' + j.id + '\',\'cancel\')" style="padding:2px 6px;border:none;background:#eee;border-radius:4px;cursor:pointer;font-size:.8em">✕</button>';
                 html += '</div>';
             });
@@ -1711,21 +1726,27 @@ async function scheduleAction(jobId, action) {
     if (action === 'now') {
         await fetch('/api/schedule/publish-now', {method:'POST', body:fd});
     } else if (action === 'reschedule') {
-        var slots = ['08:30','12:00','19:00','21:30'];
-        var slot = slots[(slots.indexOf('19:00') + 1) % slots.length];
+        var tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate()+1);
+        var tmrDate = tomorrow.toISOString().slice(0,10);
+        var tmrStr = (tomorrow.getMonth()+1).toString().padStart(2,'0') + '/' + tomorrow.getDate().toString().padStart(2,'0');
         var pick = document.createElement('select');
-        pick.innerHTML = slots.map(s => '<option value="'+s+'">'+s+'</option>').join('');
+        pick.innerHTML = '<option value="'+tmrDate+'T08:30">' + tmrStr + ' 08:30</option><option value="'+tmrDate+'T12:00">' + tmrStr + ' 12:00</option><option value="'+tmrDate+'T19:00">' + tmrStr + ' 19:00</option><option value="'+tmrDate+'T21:30">' + tmrStr + ' 21:30</option><option value="custom">📅 Tùy chọn</option>';
         pick.style.cssText = 'margin-left:4px';
+        var dtInput = document.createElement('input');
+        dtInput.type = 'datetime-local';
+        dtInput.style.cssText = 'margin-left:4px;display:none;font-size:.8em';
+        pick.onchange = function() { dtInput.style.display = pick.value === 'custom' ? 'inline' : 'none'; };
         var ok = document.createElement('button');
         ok.textContent = '✓';
         ok.style.cssText = 'margin-left:4px;cursor:pointer';
         ok.onclick = async function() {
-            fd.append('slot', pick.value);
+            var slot = pick.value === 'custom' ? dtInput.value : pick.value;
+            fd.append('slot', slot);
             await fetch('/api/schedule/reschedule', {method:'POST', body:fd});
             loadHistory();
         };
         var target = event?.target;
-        if (target) { target.after(pick); pick.after(ok); }
+        if (target) { target.after(pick); pick.after(dtInput); dtInput.after(ok); }
         return;
     } else {
         await fetch('/api/schedule/cancel', {method:'POST', body:fd});

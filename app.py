@@ -292,7 +292,7 @@ async def from_url(
     word_count_tk: int = Form(120),
     platforms: str = Form("facebook,tiktok"),
     voice_type: str = Form("edge"),
-    voice_speed: int = Form(175),
+    voice_speed: int = Form(140),
     voice_id: str = Form(""),
     bookmarklet_images: str = Form("[]"),
     media: list[UploadFile] = File(default=[]),
@@ -382,7 +382,7 @@ async def batch_assets(
     voice_type: str = Form("edge"),
     voice_id: str = Form(""),
     edge_voice: str = Form("vi-VN-HoaiMyNeural"),
-    voice_speed: int = Form(175),
+    voice_speed: int = Form(140),
     media: list[UploadFile] = File(default=[]),
 ):
     """Step 2b: Generate audio + images + AI images from existing review data."""
@@ -407,7 +407,7 @@ async def batch_assets(
     if text:
         audio_path = str(output_path(ts, "facebook.mp3"))
         try:
-            await generate_audio(text, audio_path, speed=voice_speed, voice_type=voice_type, elevenlabs_voice_id=voice_id, edge_voice=edge_voice)
+            await generate_audio(text, audio_path, speed=voice_speed, voice_type=voice_type, elevenlabs_voice_id=voice_id, edge_voice=edge_voice, no_fallback=True)
             audio_url = output_url(ts, "facebook.mp3")
             for platform in platform_list:
                 if data.get(platform):
@@ -435,12 +435,15 @@ async def batch_assets(
             images = [f"{output_url(ts, 'images')}/{Path(p).name}" for p in local]
 
     # AI images
+    ai_expected = 0
+    ai_generated = 0
     if 5 <= len(images) <= 14:
         try:
             from imagegen import generate_lifestyle_images
             persona = {"name": data.get("audience_name", "Khách hàng"), "focus": ""}
-            num_ai = 4 if len(images) <= 7 else 3 if len(images) <= 10 else 2
-            ai_images = await generate_lifestyle_images(data["book"]["title"], persona, num_ai, ts, images[:3])
+            ai_expected = 4 if len(images) <= 7 else 3 if len(images) <= 10 else 2
+            ai_images = await generate_lifestyle_images(data["book"]["title"], persona, ai_expected, ts, images[:3])
+            ai_generated = len(ai_images)
             images.extend(ai_images)
         except Exception as e:
             _log.warning(f"AI images failed: {e}")
@@ -455,6 +458,7 @@ async def batch_assets(
     images = images[:16]
 
     data["product_images"] = images
+    data["_ai_status"] = {"expected": ai_expected, "generated": ai_generated, "real_images": len(real)}
 
     # Save review json
     out = output_path(ts, "review.json")
@@ -636,6 +640,7 @@ async def import_excel(file: UploadFile):
     if not products:
         raise HTTPException(400, "Không tìm thấy sản phẩm trong file Excel")
     # Enrich unreadable titles via AffiPad
+    import re as _re
     import httpx
     api_key = os.getenv("AFFIPAD_API_KEY", "")
     if api_key:
@@ -652,6 +657,31 @@ async def import_excel(file: UploadFile):
                     except Exception:
                         pass
     return {"products": products}
+
+
+@app.post("/api/batch/save")
+async def batch_save(request: Request):
+    """Save batch state to server."""
+    from batch_state import save_state
+    data = await request.json()
+    batch_id = data.get("batch_id") or "batch_" + make_ts()
+    save_state(batch_id, data.get("reviews", []))
+    return {"batch_id": batch_id}
+
+
+@app.get("/api/batch/latest")
+async def batch_latest():
+    """Get the most recent batch state."""
+    from batch_state import get_latest
+    job = get_latest()
+    return job or {"reviews": []}
+
+
+@app.get("/api/batch/list")
+async def batch_list():
+    """List recent batches."""
+    from batch_state import list_batches
+    return {"batches": list_batches()}
 
 
 @app.post("/upload-video")
@@ -1049,7 +1079,7 @@ async def generate_video(
     music_file: str = Form(""),
     music_volume: int = Form(15),
     aspect_ratio: str = Form("9:16"),
-    voice_speed: int = Form(75),
+    voice_speed: int = Form(140),
     logo_position: str = Form("top-right"),
     logo_text: str = Form(""),
     logo: UploadFile = File(default=None),
