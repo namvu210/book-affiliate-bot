@@ -61,19 +61,25 @@ def apply_effect(src, effect, gp, lp, all_imgs, img_idx, size, zoom_ratio=0.15):
 
     elif effect == "color_pop":
         bg = crop_animated(src, gp, size)
-        import colorsys
-        gray = ImageOps.grayscale(bg)
-        pixels = bg.load()
-        gray_px = gray.load()
-        result = bg.copy()
-        rp = result.load()
-        for y in range(bg.height):
-            for x in range(bg.width):
-                r, g, b = pixels[x, y]
-                h, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
-                if not (0.95 < h or h < 0.1) or s < 0.4:
-                    rp[x, y] = (gray_px[x, y], gray_px[x, y], gray_px[x, y])
-        return result
+        import numpy as np
+        arr = np.array(bg, dtype=np.float32)
+        r, g, b = arr[:,:,0], arr[:,:,1], arr[:,:,2]
+        max_c = np.maximum(np.maximum(r, g), b)
+        min_c = np.minimum(np.minimum(r, g), b)
+        delta = max_c - min_c
+        # Hue calculation (simplified for red detection)
+        hue = np.zeros_like(max_c)
+        mask = delta > 0
+        rm = (max_c == r) & mask
+        hue[rm] = ((g[rm] - b[rm]) / delta[rm]) % 6
+        hue = hue / 6.0  # normalize to 0-1
+        sat = np.where(max_c > 0, delta / max_c, 0) / 255.0
+        # Keep red hues (h<0.1 or h>0.95) with saturation > 0.4
+        is_red = ((hue < 0.1) | (hue > 0.95)) & (sat > 0.4)
+        gray = np.array(ImageOps.grayscale(bg), dtype=np.uint8)
+        result = np.stack([gray, gray, gray], axis=2)
+        result[is_red] = np.array(bg, dtype=np.uint8)[is_red]
+        return Image.fromarray(result)
 
     elif effect == "vignette":
         bg = crop_animated(src, gp, size)
