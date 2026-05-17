@@ -1,46 +1,104 @@
 <!DOCTYPE html>
-<html lang="vi">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LifeStyle — Product Review Assistant</title>
+<title>LifeStyle — Product Review Video Creator</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: system-ui, sans-serif; background: #f5f5f5; color: #333; }
-  .hero { background: linear-gradient(135deg, #25F4EE 0%, #FE2C55 100%); color: #fff; padding: 60px 20px; text-align: center; }
-  .hero h1 { font-size: 32px; margin-bottom: 12px; }
-  .hero p { font-size: 18px; opacity: 0.9; max-width: 520px; margin: 0 auto 24px; }
-  .features { max-width: 600px; margin: 40px auto; padding: 0 20px; }
-  .feature { background: #fff; border-radius: 12px; padding: 24px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  nav { background: #fff; padding: 16px 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; align-items: center; justify-content: space-between; max-width: 900px; margin: 0 auto; }
+  nav .logo { font-weight: 700; font-size: 18px; }
+  nav a { color: #555; text-decoration: none; margin-left: 20px; font-size: 14px; }
+  nav a:hover { color: #FE2C55; }
+  .hero { background: linear-gradient(135deg, #25F4EE 0%, #FE2C55 100%); color: #fff; padding: 80px 20px; text-align: center; }
+  .hero h1 { font-size: 36px; margin-bottom: 16px; }
+  .hero p { font-size: 18px; opacity: 0.9; max-width: 560px; margin: 0 auto; }
+  section { max-width: 720px; margin: 0 auto; padding: 48px 20px; }
+  section h2 { font-size: 24px; margin-bottom: 20px; border-bottom: 2px solid #FE2C55; padding-bottom: 8px; display: inline-block; }
+  .features { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 24px; }
+  .feature { background: #fff; border-radius: 12px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
   .feature h3 { font-size: 16px; margin-bottom: 8px; }
   .feature p { font-size: 14px; color: #666; line-height: 1.6; }
-  footer { text-align: center; padding: 32px 20px; font-size: 13px; color: #999; }
-  footer a { color: #666; }
+  .steps { counter-reset: step; margin-top: 24px; }
+  .step { background: #fff; border-radius: 12px; padding: 20px 24px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; align-items: flex-start; gap: 16px; }
+  .step::before { counter-increment: step; content: counter(step); background: #FE2C55; color: #fff; font-weight: 700; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .step div h4 { font-size: 15px; margin-bottom: 4px; }
+  .step div p { font-size: 13px; color: #666; line-height: 1.5; }
+  .about-text { font-size: 15px; line-height: 1.8; color: #555; }
+  .contact-info { background: #fff; border-radius: 12px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-top: 20px; }
+  .contact-info p { font-size: 14px; line-height: 1.8; color: #555; }
+  footer { text-align: center; padding: 32px 20px; font-size: 13px; color: #999; border-top: 1px solid #eee; }
+  footer a { color: #666; margin: 0 8px; }
+  @media (max-width: 600px) { .features { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
+  <nav>
+    <span class="logo">🎬 LifeStyle</span>
+    <div>
+      <a href="#features">Features</a>
+      <a href="#how-it-works">How It Works</a>
+      <a href="#about">About</a>
+      <a href="#contact">Contact</a>
+    </div>
+  </nav>
+
   <div class="hero">
     <h1>🎬 LifeStyle</h1>
-    <p>Your assistant for creating product review videos on TikTok</p>
+    <p>Create engaging product review videos for TikTok, Facebook, and YouTube with AI assistance</p>
   </div>
 
-  <div class="features">
-    <div class="feature">
-      <h3>📝 Review Assistant</h3>
-      <p>Helps you draft product review scripts with AI suggestions — you review and edit before publishing.</p>
+  <section id="features">
+    <h2>Features</h2>
+    <div class="features">
+      <div class="feature">
+        <h3>📝 AI Review Drafting</h3>
+        <p>LifeStyle uses AI to help you draft product review scripts tailored to your audience. You always review and edit before publishing.</p>
+      </div>
+      <div class="feature">
+        <h3>🎥 Video Rendering</h3>
+        <p>Combine product images, voiceover narration, and animated subtitles into short-form videos optimized for social media.</p>
+      </div>
+      <div class="feature">
+        <h3>🎵 Voice Narration</h3>
+        <p>Generate natural-sounding voiceovers in Vietnamese using text-to-speech technology. Multiple voice styles available.</p>
+      </div>
+      <div class="feature">
+        <h3>📱 Multi-Platform Publishing</h3>
+        <p>Share your review videos directly to TikTok, Facebook Reels, and YouTube Shorts from one place.</p>
+      </div>
     </div>
-    <div class="feature">
-      <h3>🎥 Video Creation</h3>
-      <p>Assists in creating short review videos with images, voiceover, and subtitles for your TikTok content.</p>
+  </section>
+
+  <section id="how-it-works">
+    <h2>How It Works</h2>
+    <div class="steps">
+      <div class="step"><div><h4>Add Your Product</h4><p>Paste a product link or import product information. LifeStyle extracts title, description, price, and customer reviews.</p></div></div>
+      <div class="step"><div><h4>Generate Review Script</h4><p>LifeStyle drafts a review based on real product information and customer feedback. You can edit, regenerate, or customize the tone.</p></div></div>
+      <div class="step"><div><h4>Create Video</h4><p>Add product images, select background music, and LifeStyle renders a short video with voiceover and subtitles.</p></div></div>
+      <div class="step"><div><h4>Publish</h4><p>Share directly to your connected social media accounts, or download the video to post manually.</p></div></div>
     </div>
-    <div class="feature">
-      <h3>📱 Share to TikTok</h3>
-      <p>Connect your TikTok account to easily share your review videos. Videos are sent to your inbox for you to review and post.</p>
+  </section>
+
+  <section id="about">
+    <h2>About LifeStyle</h2>
+    <p class="about-text">LifeStyle is a content creation tool designed for social media creators and affiliate marketers. It streamlines the process of creating product review videos — from script writing to video rendering to publishing. LifeStyle helps creators produce consistent, engaging content without requiring video editing skills.</p>
+    <p class="about-text" style="margin-top:12px">Built for the Vietnamese market, LifeStyle supports Vietnamese language content, local e-commerce platforms, and popular social media channels used in Vietnam.</p>
+  </section>
+
+  <section id="contact">
+    <h2>Contact Us</h2>
+    <div class="contact-info">
+      <p><strong>Email:</strong> <a href="mailto:lifestyle.app.contact@gmail.com">lifestyle.app.contact@gmail.com</a></p>
+      <p><strong>GitHub:</strong> <a href="https://github.com/namvh/book-affiliate-bot">github.com/namvh/book-affiliate-bot</a></p>
+      <p><strong>Support:</strong> For bug reports and feature requests, please open an issue on our GitHub repository.</p>
     </div>
-  </div>
+  </section>
 
   <footer>
-    <a href="privacy.html">Privacy Policy</a> · <a href="terms.html">Terms of Service</a>
+    <a href="privacy.html">Privacy Policy</a> · <a href="terms.html">Terms of Service</a> · <a href="#contact">Contact</a>
+    <p style="margin-top:8px">&copy; 2026 LifeStyle. All rights reserved.</p>
   </footer>
 </body>
 </html>
