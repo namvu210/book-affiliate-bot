@@ -186,3 +186,9 @@ function pollBatchStatus(batchId) {
 - Frontend polling UI: ~100 lines
 - Testing: ~50 lines
 - Total: ~380 lines, ~2-3 hours
+
+## Status (2026-05-09)
+
+- ✅ Backend API implemented (`batch_runner.py` + endpoints in `app.py`)
+- ✅ Concurrency control (Semaphore(2) for assets + videos)
+- ⏸️ Frontend polling UI — **deferred**. Old JS orchestration works fine for current scale (10 products). Migrate when: batches grow to 20+, need mobile access, or want unattended overnight runs.

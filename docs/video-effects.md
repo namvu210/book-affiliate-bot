@@ -29,6 +29,16 @@ Controls how images animate during display and transition between each other.
 | `zoom_through` | Zoom into current image → zoom out of next (fly-through) |
 | `split_reveal` | Image splits horizontally from center, revealing next underneath |
 | `velocity` | Variable timing (first/last slow, middle rapid-fire) + zoom-through transitions |
+| `circle_iris` | Circle wipe expanding from center |
+| `slip` | Image slides down revealing next behind |
+| `scroll_h` | Horizontal scroll — img1 exits left, img2 enters right |
+| `scroll_v` | Vertical scroll — img1 exits up, img2 enters below |
+| `rotate_wipe` | Rotating pie-slice mask reveal |
+| `zoom_in` | img2 grows from center point over img1 |
+| `shooting_frame` | Frame border shrinks in revealing next image |
+| `countdown` | Flash to black then reveal (countdown feel) |
+| `switch_on` | TV switch on — horizontal line expands to full |
+| `switch_off` | TV switch off — shrinks to line then reveals next |
 
 > Transition effects use `ken_burns` as base motion during display, with the transition firing during the 4-frame (~0.17s) image switch.
 
@@ -55,6 +65,31 @@ Applied as a post-processing layer on top of the motion effect.
 | `glitch` | Random horizontal slice displacement + RGB offset |
 | `pixelate_reveal` | Starts pixelated, gradually reveals full image |
 | `before_after` | Split-screen wipe comparing two images |
+| **Light / Particle** | |
+| `halo` | Animated circular halo glow at top |
+| `scanning_light` | Horizontal light bar scanning down the frame |
+| `light_leak` | Animated warm light leak from corner |
+| `sparkles` | White sparkle particles scattered across frame |
+| `gold_sparkles` | Gold-toned sparkle particles |
+| `snowfall` | Falling snow particles with drift |
+| `glitter_bomb` | Multi-color glitter burst |
+| `starlights` | 4-point star shapes scattered |
+| `neon_glow` | Bright areas emit colored neon glow |
+| `shockwave` | Expanding circular ring from center |
+| `star_power` | Cross-shaped star highlights |
+| `rainbow_heart` | Multi-color heart shapes |
+| `pink_hearts` | Pink floating hearts |
+| **Color / Noise** | |
+| `chromatic` | RGB channel split (color fringe) |
+| `club_mood` | Cycling RGB color overlay (nightclub) |
+| `cyberpunk` | High contrast + purple tint + scanlines |
+| `negative` | Inverted colors |
+| `black_noise` | Dark film grain noise |
+| `film_grain` | Classic film grain overlay |
+| `x_signal` | VHS signal tear + color offset |
+| `flash_2` | Rapid double flash pulses |
+| `black_flash` | Periodic black flash pulses |
+| `camera_focus` | Center sharp, edges blurred (rack focus) |
 
 ## Subtitle Styles
 

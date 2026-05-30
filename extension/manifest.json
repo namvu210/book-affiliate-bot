@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "Shopee Product Scraper",
+  "version": "1.0",
+  "description": "Batch scrape Shopee product data (images, ratings, reviews) for affiliate bot",
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": ["https://shopee.vn/*"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": "icon.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://shopee.vn/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

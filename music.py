@@ -5,7 +5,7 @@ import random
 
 import httpx
 
-CATEGORIES = ["happy", "sad", "calm", "energetic", "acoustic", "piano", "lofi", "jazz", "pop", "cinematic", "corporate", "ambient"]
+CATEGORIES = ["happy", "energetic", "acoustic", "piano", "lofi", "jazz", "pop", "cinematic", "corporate", "ambient"]
 
 
 async def search_music(category: str = "", q: str = "", refresh: bool = False, source: str = "freesound") -> dict:
@@ -72,11 +72,16 @@ async def _search_jamendo(search: str, refresh: bool) -> dict:
 
 
 GENRE_KEYWORDS = {
-    "happy": ["trẻ em", "bé", "mầm non", "thiếu nhi", "đồ chơi"],
-    "acoustic": ["sách", "book", "học", "giáo dục"],
-    "lofi": ["thời trang", "áo", "quần", "váy", "giày"],
-    "corporate": ["công nghệ", "laptop", "điện thoại", "tai nghe"],
-    "piano": ["mỹ phẩm", "skincare", "serum", "kem"],
+    "happy": ["trẻ em", "bé", "mầm non", "thiếu nhi", "đồ chơi", "baby"],
+    "acoustic": ["sách", "book", "học", "giáo dục", "linen", "vintage", "retro", "minimalist"],
+    "lofi": ["áo thun", "quần jean", "sneaker", "streetwear", "hoodie", "basic", "unisex", "big size", "cotton", "polo"],
+    "pop": ["đầm", "váy", "crop top", "bodycon", "party", "dạ hội", "sequin", "bling", "sexy"],
+    "jazz": ["vest", "blazer", "công sở", "office", "suit", "sơ mi", "formal", "thanh lịch"],
+    "ambient": ["đồ ngủ", "pyjama", "đồ lót", "nội y", "khăn", "homewear", "loungewear"],
+    "energetic": ["gym", "thể thao", "sport", "running", "yoga", "fitness", "activewear", "tập"],
+    "corporate": ["công nghệ", "laptop", "điện thoại", "tai nghe", "phụ kiện", "gadget"],
+    "piano": ["mỹ phẩm", "skincare", "serum", "kem", "nước hoa", "perfume", "dưỡng"],
+    "cinematic": ["túi xách", "balo", "giày cao gót", "boot", "leather", "da", "luxury", "cao cấp"],
 }
 
 

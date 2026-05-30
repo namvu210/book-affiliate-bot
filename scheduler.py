@@ -45,8 +45,8 @@ def _save_schedule(jobs: list[dict]):
         SCHEDULE_FILE.write_text(json.dumps(jobs, ensure_ascii=False, indent=2))
 
 
-def add_job(review_data: dict, video_url: str, platform: str, page_id: str = "", slot: str = "") -> dict:
-    """Add a video to the posting queue. slot='' means next available."""
+def add_job(review_data: dict, video_url: str, platform: str = "all", page_id: str = "", slot: str = "") -> dict:
+    """Add a video to the posting queue. platform='all' posts to all connected. slot='' means next available."""
     if not slot:
         slot = _next_slot()
     job = {
@@ -96,10 +96,10 @@ def get_all() -> list[dict]:
 
 
 def cancel_job(job_id: str) -> bool:
-    """Cancel a pending job."""
+    """Cancel a pending or failed job."""
     jobs = _load_schedule()
     for j in jobs:
-        if j["id"] == job_id and j["status"] == "pending":
+        if j["id"] == job_id and j["status"] in ("pending", "failed"):
             j["status"] = "cancelled"
             _save_schedule(jobs)
             return True
@@ -184,44 +184,78 @@ async def check_and_publish():
     log.info(f"Scheduler: {len(ready)} jobs ready to publish")
 
     from poster import publish, build_post_request
+    from auth import get_platform_status
 
     for job in ready:
         try:
             data = job["review_data"]
-            req = build_post_request(data, job["video_url"], job["platform"])
-            req.platforms = [job["platform"]]
+            # Resolve platforms: "all" means all connected platforms
+            platform_list = [job["platform"]] if job["platform"] != "all" else []
+            if job["platform"] == "all":
+                status = get_platform_status()
+                for p in ["facebook", "instagram", "tiktok", "youtube", "threads"]:
+                    if status.get(p, {}).get("connected"):
+                        platform_list.append(p)
+                if not platform_list:
+                    platform_list = ["facebook"]
+
+            req = build_post_request(data, job["video_url"], platform_list[0])
+            req.platforms = platform_list
             req.page_id = job.get("page_id", "")
+            log.info(f"Scheduler: publishing to {platform_list} (job {job['id'][:8]})")
             results = await publish(req)
-            if results and results[0].success:
+
+            successes = [r for r in results if r.success]
+            failures = [r for r in results if not r.success]
+
+            if successes:
                 _mark_done(job["id"])
-                log.info(f"Scheduler: published {job['platform']} ✅")
-                # Record in history
+                log.info(f"Scheduler: published {[r.platform for r in successes]} ✅")
                 from history import record_publish
                 book = data.get("book", {})
-                plat_data = data.get(job["platform"], {})
-                post_url = ""
-                if results[0].post_id:
-                    pid = results[0].post_id
-                    if job["platform"] == "facebook":
-                        post_url = f"https://www.facebook.com/reel/{pid}"
-                    elif job["platform"] == "tiktok":
-                        post_url = f"https://www.tiktok.com/@/video/{pid}"
-                    elif job["platform"] == "youtube":
-                        post_url = f"https://youtube.com/shorts/{pid}"
-                record_publish(
-                    book.get("shopee_url", ""), book.get("shopee_url", ""),
-                    job["platform"], book.get("title", ""),
-                    persona=data.get("audience_name", ""),
-                    hook=plat_data.get("hook", ""),
-                    cta=plat_data.get("cta", ""),
-                    review_text=plat_data.get("social_post", ""),
-                    video_path=job["video_url"],
-                    post_url=post_url,
-                )
-            else:
-                msg = results[0].message if results else "Unknown error"
-                _mark_failed(job["id"], msg)
-                log.warning(f"Scheduler: failed {job['platform']}: {msg}")
+                plat_data = data.get("facebook", {}) or data.get("tiktok", {}) or {}
+                for r in successes:
+                    post_url = ""
+                    if r.post_id:
+                        pid = r.post_id
+                        urls = {"facebook": f"https://www.facebook.com/reel/{pid}",
+                                "tiktok": f"https://www.tiktok.com/@/video/{pid}",
+                                "youtube": f"https://youtube.com/shorts/{pid}",
+                                "instagram": f"https://www.instagram.com/reel/{pid}",
+                                "threads": f"https://www.threads.net/post/{pid}"}
+                        post_url = urls.get(r.platform, "")
+                    record_publish(
+                        book.get("shopee_url", ""), book.get("shopee_url", ""),
+                        r.platform, book.get("title", ""),
+                        persona=data.get("audience_name", ""),
+                        hook=plat_data.get("hook", ""),
+                        cta=plat_data.get("cta", ""),
+                        review_text=plat_data.get("social_post", ""),
+                        video_path=job["video_url"],
+                        post_url=post_url,
+                    )
+            if failures:
+                # Create failed jobs for manual retry via UI
+                for r in failures:
+                    retry_job = {
+                        "id": datetime.now().strftime("%Y%m%d%H%M%S%f"),
+                        "review_data": data,
+                        "video_url": job["video_url"],
+                        "platform": r.platform,
+                        "page_id": job.get("page_id", ""),
+                        "slot": job["slot"],
+                        "status": "failed",
+                        "created_at": datetime.now().isoformat(),
+                        "published_at": None,
+                        "retry_of": job["id"],
+                        "last_error": r.message,
+                    }
+                    jobs = _load_schedule()
+                    jobs.append(retry_job)
+                    _save_schedule(jobs)
+                    log.warning(f"Scheduler: {r.platform} failed: {r.message}")
+            if not successes and not failures:
+                _mark_failed(job["id"], "No results")
         except Exception as e:
             _mark_failed(job["id"], str(e))
-            log.warning(f"Scheduler: error {job['platform']}: {e}")
+            log.warning(f"Scheduler: error: {e}")

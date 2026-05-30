@@ -5,9 +5,11 @@ from pathlib import Path
 
 from google import genai
 from google.genai import types
-from PIL import Image
+from PIL import Image, ImageFile
 
 from config import GEMINI_API_KEY, log, output_path, output_url
+
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 EDIT_MODEL = "gemini-2.5-flash-image"
 SCENE_MODEL = "gemini-2.5-flash-lite"
@@ -17,7 +19,10 @@ INPUT_MAX_PX = 512
 
 
 def _resize_for_input(img: Image.Image) -> Image.Image:
-    """Resize image to fit within INPUT_MAX_PX box to reduce Gemini token cost."""
+    """Resize image to fit within INPUT_MAX_PX box and force pixel load."""
+    img.load()
+    if img.mode not in ("RGB", "RGBA"):
+        img = img.convert("RGB")
     if max(img.size) > INPUT_MAX_PX:
         img = img.copy()
         img.thumbnail((INPUT_MAX_PX, INPUT_MAX_PX))
@@ -103,11 +108,12 @@ def generate_scene_descriptions(product_title: str, persona: dict, num_scenes: i
         f"- Motion blur / action shot (person using product dynamically)\n\n"
         f"SETTING — match the product naturally:\n"
         f"  * Underwear/lingerie → bedroom, flat lay on bed. NEVER in public.\n"
-        f"  * Swimwear → beach, pool\n"
+        f"  * Swimwear → beach, pool, coastal scenery\n"
         f"  * Sleepwear → bedroom, living room\n"
-        f"  * Fashion → café, street, park\n"
+        f"  * Fashion → Use your knowledge of famous travel/tourism locations across Vietnam's 63 provinces. Pick a different iconic location for each scene (landscapes, beaches, bridges, streets, markets, hills, lakes, waterfalls, rice terraces, etc). Vary regions (North/Central/South). NEVER repeat the same location.\n"
         f"  * Kitchen items → kitchen\n"
-        f"  * Books/stationery → desk, café, library\n\n"
+        f"  * Books/stationery → desk, café, library\n"
+        f"  * NEVER use pagoda, temple, or religious building as background.\n\n"
         f"MANDATORY SEQUENCE:\n"
         f"- Image 1: Product extreme close-up/detail (texture, label, material). No person.\n"
         f"- Image 2+: Each uses a DIFFERENT camera angle. NO two scenes with the same angle.\n\n"
@@ -218,6 +224,7 @@ async def generate_lifestyle_images(
     num_images: int,
     ts: str,
     product_images: list[str] = None,
+    aspect_ratio: str = "9:16",
 ) -> list[str]:
     """Generate AI lifestyle images by compositing KOL + product photos."""
     num = min(num_images, MAX_AI_IMAGES)
@@ -251,6 +258,10 @@ async def generate_lifestyle_images(
         return []
 
     client = genai.Client(api_key=GEMINI_API_KEY)
+    img_config = types.GenerateContentConfig(
+        response_modalities=["IMAGE", "TEXT"],
+        image_config=types.ImageConfig(aspect_ratio=aspect_ratio),
+    )
 
     img_dir = output_path(ts, "ai_images")
     img_dir.mkdir(parents=True, exist_ok=True)
@@ -326,6 +337,7 @@ async def generate_lifestyle_images(
                 f"- Warm color temperature, shallow depth of field\n"
                 f"- Natural imperfection (lived-in, real-life feel)\n"
                 f"- NO stock photo aesthetic, no white void, no corporate lighting\n"
+                f"- NEVER use pagoda, temple, or any religious building as background\n"
                 f"- Think 'iPhone photo by a stylish friend'\n\n"
                 f"RULES:\n"
                 f"- Vietnamese setting matching the scene description\n"
@@ -334,12 +346,22 @@ async def generate_lifestyle_images(
             )
 
             log.info(f"Editing image {i+1}/{len(scenes)}...")
-            result = await asyncio.to_thread(
-                client.models.generate_content,
-                model=EDIT_MODEL,
-                contents=contents,
-                config=types.GenerateContentConfig(response_modalities=["IMAGE", "TEXT"]),
-            )
+            try:
+                result = await asyncio.to_thread(
+                    client.models.generate_content,
+                    model=EDIT_MODEL,
+                    contents=contents,
+                    config=img_config,
+                )
+            except (AssertionError, ValueError) as img_err:
+                log.warning(f"Image {i+1} SDK error ({type(img_err).__name__}), retrying without product images...")
+                text_only = [c for c in contents if not isinstance(c, Image.Image)]
+                result = await asyncio.to_thread(
+                    client.models.generate_content,
+                    model=EDIT_MODEL,
+                    contents=text_only,
+                    config=img_config,
+                )
 
             for part in (result.candidates[0].content.parts if result.candidates and result.candidates[0].content else []):
                 if part.inline_data:
@@ -365,7 +387,7 @@ async def generate_lifestyle_images(
                         retry_result = await asyncio.to_thread(
                             client.models.generate_content,
                             model=EDIT_MODEL, contents=retry_contents,
-                            config=types.GenerateContentConfig(response_modalities=["IMAGE", "TEXT"]),
+                            config=img_config,
                         )
                         for rp in (retry_result.candidates[0].content.parts if retry_result.candidates and retry_result.candidates[0].content else []):
                             if rp.inline_data:

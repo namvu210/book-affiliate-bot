@@ -1,5 +1,6 @@
 """Video preparation: resolve assets and render."""
 
+import random
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -8,6 +9,47 @@ import httpx
 from config import log, make_ts, output_path, output_url, OUTPUT_DIR
 from music import get_background_music
 from tts import generate_audio
+
+EFFECT_POOL = [
+    # Pure motion (per-frame animation)
+    'ken_burns', 'slide_lr', 'slide_ud', 'bounce_zoom', 'zoom_center',
+    'parallax', 'rotate_tilt', 'crossfade', 'before_after',
+    # Transition-based (ken_burns between switches, effect at image boundaries)
+    'whip_pan', 'velocity', 'glitch_trans', 'shutter', 'zoom_through',
+    'circle_iris', 'slip', 'scroll_h', 'scroll_v', 'shooting_frame',
+    'countdown', 'split_reveal', 'rotate_wipe', 'zoom_in', 'switch_on',
+]
+STYLE_POOL = [
+    'none', 'color_pop', 'sparkles', 'gold_sparkles', 'chromatic',
+    'neon_glow', 'cyberpunk', 'camera_focus',
+    'halo', 'scanning_light', 'light_leak', 'soft_glow',
+    'film_grain', 'starlights', 'star_power',
+]
+
+_INCOMPATIBLE = {
+    'glitch_trans': {'chromatic', 'neon_glow', 'soft_glow', 'halo'},
+    'shutter': {'camera_focus', 'scanning_light'},
+    'velocity': {'cyberpunk', 'neon_glow', 'scanning_light'},
+    'shake': {'chromatic', 'cyberpunk'},
+    'countdown': {'camera_focus', 'scanning_light'},
+    'rotate_tilt': {'chromatic'},
+    'bounce_zoom': {'camera_focus', 'scanning_light'},
+    'before_after': {'camera_focus'},
+    'split_reveal': {'chromatic'},
+    'rotate_wipe': {'chromatic'},
+    'zoom_in': {'camera_focus'},
+    'switch_on': {'camera_focus'},
+}
+
+
+def pick_effect_combo(seed=None) -> tuple[str, str]:
+    """Pick a compatible (effect, style) pair. Seed for reproducibility."""
+    rng = random.Random(seed)
+    effect = rng.choice(EFFECT_POOL)
+    blocked = _INCOMPATIBLE.get(effect, set())
+    valid_styles = [s for s in STYLE_POOL if s not in blocked]
+    style = rng.choice(valid_styles)
+    return effect, style
 
 
 @dataclass
@@ -21,12 +63,15 @@ class VideoInput:
     music_volume: int = 15
     aspect_ratio: str = "9:16"
     voice_speed: int = 75
+    voice_type: str = "edge"
+    elevenlabs_voice_id: str = ""
     logo_data: bytes | None = None
     logo_text: str = ""
     logo_position: str = "top-right"
     subtitle_style: str = "tiktok"
     highlight_color: str = "#FFD700"
     img_effect: str = "ken_burns"
+    img_transition: str = ""
     img_style: str = "none"
     zoom_ratio: int = 15
     show_intro: bool = True
@@ -42,7 +87,7 @@ async def render_video(inp: VideoInput) -> dict:
     from video import generate_tiktok_video, generate_srt, extract_cover_from_pdf
 
     data = inp.review_data
-    platform_data = data.get(inp.platform, data.get("tiktok", {}))
+    platform_data = data.get(inp.platform) or data.get("facebook") or data.get("tiktok") or {}
     book = data.get("book", {})
     ts = make_ts()
 
@@ -91,8 +136,8 @@ async def render_video(inp: VideoInput) -> dict:
     if audio_url:
         audio_path = str(Path(OUTPUT_DIR) / audio_url.split("/")[-1])
     else:
-        audio_path = str(output_path(ts, f"{inp.platform}.mp3"))
-        await generate_audio(platform_data.get("social_post", ""), audio_path, speed=100 + inp.voice_speed)
+        audio_path = str(output_path(ts, "audio.mp3"))
+        await generate_audio(platform_data.get("social_post", ""), audio_path, speed=inp.voice_speed, voice_type=inp.voice_type, elevenlabs_voice_id=inp.elevenlabs_voice_id)
 
     # Music — auto-fetch if none selected
     local_music = None
@@ -101,10 +146,18 @@ async def render_video(inp: VideoInput) -> dict:
         Path(local_music).write_bytes(inp.music_data)
     elif inp.music_url and inp.music_url.startswith("http"):
         local_music = str(output_path(ts, "music.mp3"))
-        r = httpx.get(inp.music_url, timeout=30, follow_redirects=True)
-        if r.status_code == 200:
-            Path(local_music).write_bytes(r.content)
-        else:
+        downloaded = False
+        for attempt in range(3):
+            try:
+                r = httpx.get(inp.music_url, timeout=30, follow_redirects=True)
+                if r.status_code == 200:
+                    Path(local_music).write_bytes(r.content)
+                    downloaded = True
+                    break
+            except (httpx.RemoteProtocolError, httpx.ReadError):
+                if attempt < 2:
+                    import time; time.sleep(1)
+        if not downloaded:
             local_music = None
     elif inp.music_url:
         local_music = inp.music_url
@@ -137,6 +190,16 @@ async def render_video(inp: VideoInput) -> dict:
 
     cta_val = platform_data.get("cta", "").strip() or "🛒 Link mua ở mô tả nhé!"
     hook_val = platform_data.get("hook", "")
+
+    # Resolve effect/style — use pick_effect_combo for "random" to avoid clashes
+    if inp.img_effect == "random" or inp.img_style == "random":
+        seed = hash(book.get("title", "") + ts)
+        combo_effect, combo_style = pick_effect_combo(seed)
+        _resolved_effect = combo_effect if inp.img_effect == "random" else inp.img_effect
+        _resolved_style = combo_style if inp.img_style == "random" else inp.img_style
+    else:
+        _resolved_effect = inp.img_effect
+        _resolved_style = inp.img_style
     log.info(f"Video render: hook='{hook_val[:50]}', cta='{cta_val[:50]}', images={len(media_paths)}, intro={inp.show_intro}, outro={inp.show_outro}")
     video_path = str(output_path(ts, f"{inp.platform}.mp4"))
     import asyncio
@@ -154,7 +217,9 @@ async def render_video(inp: VideoInput) -> dict:
         aspect_ratio=inp.aspect_ratio,
         logo_path=logo_path, logo_text=inp.logo_text, logo_position=inp.logo_position,
         subtitle_style=inp.subtitle_style, highlight_color=inp.highlight_color,
-        img_effect=inp.img_effect, img_style=inp.img_style,
+        img_effect=_resolved_effect,
+        img_transition=inp.img_transition,
+        img_style=_resolved_style,
         zoom_ratio=max(5, min(100, inp.zoom_ratio)) / 100,
         show_intro=inp.show_intro, show_outro=inp.show_outro,
         preview_only=inp.preview_only,

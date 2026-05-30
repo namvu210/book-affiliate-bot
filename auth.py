@@ -25,7 +25,7 @@ def get_platform_status() -> dict:
     """Return connection status for all platforms."""
     tokens = _load_tokens()
     result = {}
-    for platform in ["tiktok", "youtube", "facebook"]:
+    for platform in ["tiktok", "youtube", "facebook", "threads"]:
         t = tokens.get(platform, {})
         result[platform] = {
             "connected": bool(t.get("access_token")),
@@ -38,6 +38,13 @@ def get_platform_status() -> dict:
         result["facebook"]["connected"] = True
         result["facebook"]["name"] = ", ".join(p["display_name"] for p in pages)
         result["facebook"]["page_count"] = len(pages)
+    # Instagram: connected if any FB page has a linked IG account
+    ig_page = next((p for p in pages if p.get("instagram_business_account_id")), None)
+    result["instagram"] = {
+        "connected": bool(ig_page),
+        "name": ig_page.get("instagram_name") or ig_page.get("instagram_username", "") if ig_page else "",
+        "ig_account_id": ig_page.get("instagram_business_account_id", "") if ig_page else "",
+    }
     return result
 
 
@@ -182,7 +189,7 @@ def youtube_auth_url() -> str:
         f"?client_id={client_id}"
         f"&redirect_uri={redirect}"
         f"&response_type=code"
-        f"&scope=https://www.googleapis.com/auth/youtube.upload"
+        f"&scope=https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly https://www.googleapis.com/auth/youtube.force-ssl"
         f"&access_type=offline"
         f"&prompt=consent"
     )
@@ -202,11 +209,24 @@ async def youtube_exchange_code(code: str) -> dict:
         })
         data = resp.json()
         if "access_token" in data:
+            display_name = "YouTube Channel"
+            try:
+                ch_resp = await client.get(
+                    "https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true",
+                    headers={"Authorization": f"Bearer {data['access_token']}"},
+                )
+                ch_data = ch_resp.json()
+                _log.info(f"YouTube channel API response: {ch_data}")
+                items = ch_data.get("items", [])
+                if items:
+                    display_name = items[0]["snippet"].get("title", display_name)
+            except Exception as e:
+                _log.warning(f"YouTube channel name fetch failed: {e}")
             return {
                 "access_token": data["access_token"],
                 "refresh_token": data.get("refresh_token", ""),
                 "expires_at": time.time() + data.get("expires_in", 3600),
-                "display_name": "YouTube Channel",
+                "display_name": display_name,
             }
     return {}
 
@@ -221,7 +241,7 @@ def facebook_auth_url() -> str:
         f"https://www.facebook.com/v21.0/dialog/oauth"
         f"?client_id={app_id}"
         f"&redirect_uri={redirect}"
-        f"&scope=pages_manage_posts,pages_read_engagement,pages_show_list,pages_manage_engagement"
+        f"&scope=pages_manage_posts,pages_read_engagement,pages_show_list,pages_manage_engagement,instagram_basic,instagram_content_publish"
         f"&response_type=code"
         f"&state={state}"
     )
@@ -242,25 +262,70 @@ async def facebook_exchange_code(code: str) -> dict:
         data = resp.json()
         user_token = data.get("access_token", "")
         if not user_token:
-            return {}
+            err = data.get("error", {})
+            msg = err.get("message", "") if isinstance(err, dict) else str(data)
+            _log.error(f"Facebook token exchange failed: {data}")
+            return {"error": msg or str(data)}
 
         # Get all page tokens (long-lived)
         pages_resp = await client.get(f"https://graph.facebook.com/v21.0/me/accounts", params={
             "access_token": user_token,
+            "fields": "id,name,access_token,instagram_business_account",
         })
-        pages = pages_resp.json().get("data", [])
+        pages_data = pages_resp.json()
+        _log.info(f"Facebook pages response: {pages_data}")
+        pages = pages_data.get("data", [])
+
+        if not pages:
+            # Fallback: /me/accounts sometimes returns empty even with granted scopes.
+            # Extract page IDs from granular_scopes and query each directly.
+            _log.warning("No pages from /me/accounts — trying fallback via debug_token")
+            debug_resp = await client.get("https://graph.facebook.com/v21.0/debug_token", params={
+                "input_token": user_token, "access_token": user_token,
+            })
+            debug_data = debug_resp.json().get("data", {})
+            page_ids = set()
+            for gs in debug_data.get("granular_scopes", []):
+                if gs.get("scope") == "pages_manage_posts":
+                    page_ids.update(gs.get("target_ids", []))
+            for pid in page_ids:
+                try:
+                    p_resp = await client.get(f"https://graph.facebook.com/v21.0/{pid}", params={
+                        "fields": "id,name,access_token,instagram_business_account",
+                        "access_token": user_token,
+                    })
+                    p_data = p_resp.json()
+                    if "access_token" in p_data:
+                        pages.append(p_data)
+                except Exception as e:
+                    _log.warning(f"Fallback page fetch failed for {pid}: {e}")
+
         if not pages:
             return {}
 
         # Save all pages as array
         fb_pages = []
         for page in pages:
-            fb_pages.append({
+            entry = {
                 "access_token": page["access_token"],
                 "page_id": page["id"],
                 "display_name": page.get("name", "Facebook Page"),
                 "expires_at": time.time() + 5184000,
-            })
+            }
+            ig = page.get("instagram_business_account")
+            if ig:
+                ig_id = ig["id"] if isinstance(ig, dict) else ig
+                entry["instagram_business_account_id"] = ig_id
+                try:
+                    ig_resp = await client.get(f"https://graph.facebook.com/v21.0/{ig_id}", params={
+                        "fields": "username,name", "access_token": page["access_token"],
+                    })
+                    ig_data = ig_resp.json()
+                    entry["instagram_username"] = ig_data.get("username", "")
+                    entry["instagram_name"] = ig_data.get("name", "")
+                except Exception:
+                    pass
+            fb_pages.append(entry)
 
         # Store as array; return first for backward compat
         tokens = _load_tokens()
@@ -269,6 +334,70 @@ async def facebook_exchange_code(code: str) -> dict:
         tokens["facebook"] = {**fb_pages[0], "refresh_token": ""}
         _save_tokens(tokens)
         return tokens["facebook"]
+
+
+# === Threads OAuth ===
+
+def threads_auth_url() -> str:
+    app_id = os.getenv("THREADS_APP_ID", "")
+    redirect = os.getenv("THREADS_REDIRECT_URI", "http://localhost:8000/callback/threads")
+    return (
+        f"https://www.threads.net/oauth/authorize"
+        f"?client_id={app_id}"
+        f"&redirect_uri={redirect}"
+        f"&scope=threads_basic,threads_content_publish"
+        f"&response_type=code"
+    )
+
+
+async def threads_exchange_code(code: str) -> dict:
+    app_id = os.getenv("THREADS_APP_ID", "")
+    app_secret = os.getenv("THREADS_APP_SECRET", "")
+    redirect = os.getenv("THREADS_REDIRECT_URI", "http://localhost:8000/callback/threads")
+    async with httpx.AsyncClient() as client:
+        # Exchange code for short-lived token
+        resp = await client.post("https://graph.threads.net/oauth/access_token", data={
+            "client_id": app_id,
+            "client_secret": app_secret,
+            "code": code,
+            "grant_type": "authorization_code",
+            "redirect_uri": redirect,
+        })
+        data = resp.json()
+        short_token = data.get("access_token", "")
+        user_id = data.get("user_id", "")
+        if not short_token:
+            _log.error(f"Threads token exchange failed: {data}")
+            return {"error": data.get("error_message", str(data))}
+
+        # Exchange for long-lived token (60 days)
+        ll_resp = await client.get("https://graph.threads.net/access_token", params={
+            "grant_type": "th_exchange_token",
+            "client_secret": app_secret,
+            "access_token": short_token,
+        })
+        ll_data = ll_resp.json()
+        access_token = ll_data.get("access_token", short_token)
+        expires_in = ll_data.get("expires_in", 5184000)
+
+        # Fetch profile
+        display_name = "Threads User"
+        try:
+            profile = await client.get(f"https://graph.threads.net/v1.0/me", params={
+                "fields": "username,name",
+                "access_token": access_token,
+            })
+            pdata = profile.json()
+            display_name = pdata.get("name") or pdata.get("username", display_name)
+        except Exception:
+            pass
+
+        return {
+            "access_token": access_token,
+            "user_id": str(user_id),
+            "expires_at": time.time() + expires_in,
+            "display_name": display_name,
+        }
 
 
 def _refresh_token(platform: str, token_data: dict) -> dict | None:
@@ -296,6 +425,15 @@ def _refresh_token(platform: str, token_data: dict) -> dict | None:
             d = r.json()
             if "access_token" in d:
                 return {"access_token": d["access_token"], "expires_at": time.time() + d.get("expires_in", 3600)}
+
+        elif platform == "threads":
+            r = httpx.get("https://graph.threads.net/refresh_access_token", params={
+                "grant_type": "th_refresh_token",
+                "access_token": token_data["access_token"],
+            })
+            d = r.json()
+            if "access_token" in d:
+                return {"access_token": d["access_token"], "expires_at": time.time() + d.get("expires_in", 5184000)}
     except Exception as e:
         _log.warning(f"Refresh failed for {platform}: {e}")
     return None

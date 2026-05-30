@@ -60,13 +60,7 @@ def test_generate_json_no_retry_on_400():
 
 def test_suggest_personas_returns_error_on_failure():
     """The /suggest-personas endpoint should return error field when LLM fails."""
-    import asyncio
-    from app import suggest_personas
-    from unittest.mock import AsyncMock
-
-    # Mock Form input
     with patch("reviewer.generate_json", side_effect=RuntimeError("503 after 3 retries")):
-        # Call the endpoint function directly
         from fastapi.testclient import TestClient
         from app import app
         client = TestClient(app)

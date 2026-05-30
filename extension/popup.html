@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { width: 380px; font-family: -apple-system, BlinkMacSystemFont, sans-serif; padding: 16px; font-size: 13px; }
+    h2 { font-size: 15px; margin-bottom: 12px; }
+    .section { margin-bottom: 14px; }
+    .section label { font-weight: 600; display: block; margin-bottom: 4px; }
+    input[type="text"] { width: 100%; padding: 6px 8px; border: 1.5px solid #ddd; border-radius: 6px; font-size: 12px; }
+    .btn { padding: 8px 14px; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; }
+    .btn-primary { background: #e94560; color: #fff; }
+    .btn-primary:disabled { background: #ccc; cursor: not-allowed; }
+    .btn-secondary { background: #f0f0f0; color: #333; border: 1px solid #ddd; }
+    .btn-row { display: flex; gap: 8px; margin-top: 10px; }
+    .queue { margin-top: 10px; max-height: 200px; overflow-y: auto; }
+    .queue-item { padding: 6px 8px; background: #f8f8f8; border-radius: 6px; margin-bottom: 4px; font-size: 11px; display: flex; justify-content: space-between; align-items: center; }
+    .queue-item.done { background: #d4edda; }
+    .queue-item.error { background: #f8d7da; }
+    .queue-item .title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .badge { font-size: 10px; padding: 2px 6px; border-radius: 4px; }
+    .badge-ok { background: #28a745; color: #fff; }
+    .badge-err { background: #dc3545; color: #fff; }
+    .badge-wait { background: #ffc107; color: #333; }
+    #status { margin-top: 8px; font-size: 11px; color: #666; }
+    .server-row { display: flex; gap: 6px; align-items: center; }
+    .server-row input { flex: 1; }
+  </style>
+</head>
+<body>
+  <h2>🛒 Shopee Batch Scraper</h2>
+
+  <div class="section">
+    <label>Server URL</label>
+    <div class="server-row">
+      <input type="text" id="server-url" value="https://localhost:8000" placeholder="https://localhost:8000">
+      <button class="btn btn-secondary" id="btn-test">Test</button>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="btn-row">
+      <button class="btn btn-primary" id="btn-scrape">📷 Scrape This Page</button>
+      <button class="btn btn-secondary" id="btn-scrape-send">📷 Scrape & Send</button>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-secondary" id="btn-send-all">📤 Send All to Server</button>
+      <button class="btn btn-secondary" id="btn-clear">🗑️ Clear Queue</button>
+      <button class="btn btn-secondary" id="btn-debug">🔍 Debug</button>
+      <button class="btn btn-secondary" id="btn-debug-reviews">🔍 Reviews</button>
+    </div>
+  </div>
+
+  <div class="section">
+    <label>Queue (<span id="queue-count">0</span> products)</label>
+    <div class="queue" id="queue-list"></div>
+  </div>
+
+  <div id="status"></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

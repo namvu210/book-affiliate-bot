@@ -1,6 +1,6 @@
 TODO - Product Affiliate Bot
 =============================
-Updated: 2026-05-04
+Updated: 2026-05-15
 
 ## DONE ✅ (May 3-4)
 
@@ -73,6 +73,38 @@ Updated: 2026-05-04
 ### Testing
 - [x] 11 tests: importer, review errors, platform filtering, render guards, affiliate
 
+## DONE ✅ (May 5-15)
+
+### Platform & Publishing
+- [x] Auto-posting scheduler (check_and_publish every 60s, time-slot matching)
+- [x] Multi-FB page publishing (page_id selection in poster)
+- [x] One-video multi-platform (single video → publish to FB + TK + YT)
+- [x] Publish history dashboard (CSV tracking, duplicate detection)
+- [x] History refresh button + clickable post links
+- [x] Clickable video links in schedule missed/upcoming sections
+
+### Batch Mode
+- [x] Batch state persistence (batch_jobs/ JSON files, survives restart)
+- [x] Batch repairability (resume failed steps)
+- [x] ElevenLabs-only batch voice generation
+
+### Video & Effects
+- [x] Video effects Phase 1-3 (ken_burns, zoom_pan, color_pop)
+- [x] Dynamic image cap (text watermark, sentence-aligned video)
+- [x] color_pop numpy speedup
+
+### AI & Voice
+- [x] Edge TTS integration (vi-VN-HoaiMyNeural, 3rd engine option)
+- [x] Voice speed 1.4x default
+- [x] Parallel image generation + retry logic
+- [x] Optimize image tokens for Gemini
+- [x] Review variety improvements
+
+### Fixes
+- [x] Audio cutoff fix
+- [x] Timestamp format fix
+- [x] TTS and scheduler fixes
+
 ## IN PROGRESS
 - [ ] TikTok app approval (submitted, waiting)
 
@@ -80,17 +112,15 @@ Updated: 2026-05-04
 
 ### Platform
 - [ ] AccessTrade tracking link API (replace AffiPad for affiliate links)
-- [ ] Multi-account publishing (multiple FB pages, content per page)
 - [ ] YouTube: upload as public instead of private
 - [ ] "Đăng tất cả" button in batch Step 3
 
 ### Code
-- [ ] Split app.py into FastAPI routers
+- [x] Split app.py into FastAPI routers (9 routers, lifespan migration)
 - [ ] Extract more JS from index.html (review.js, video.js)
 - [ ] Tests for extractor URL parsing edge cases
 
 ### Future
-- [ ] Auto-posting scheduler
 - [ ] Analytics dashboard (which products convert)
 - [ ] AccessTrade "top sản phẩm bán chạy" auto-discovery
 - [ ] Windows deployment testing

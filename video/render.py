@@ -19,7 +19,13 @@ _FFMPEG_MOTION = {"ken_burns", "slide_lr", "slide_ud", "zoom_center", "bounce_zo
 # Style effects that can be applied once to a static image
 _STATIC_STYLES = {"grayscale", "sepia", "saturation", "contrast", "color_tint",
                   "color_pop", "vignette", "soft_glow", "mirror", "brightness",
-                  "darken", "blur_bg", "none"}
+                  "darken", "blur_bg", "none",
+                  "halo", "scanning_light", "light_leak", "sparkles", "gold_sparkles",
+                  "snowfall", "glitter_bomb", "starlights", "neon_glow", "shockwave",
+                  "chromatic", "club_mood", "cyberpunk", "negative", "black_noise",
+                  "film_grain", "x_signal", "flash_2", "black_flash", "camera_focus",
+                  "star_power", "rainbow_heart", "pink_hearts",
+                  "aura", "contour", "wings", "thermal_aura", "phantom", "ghost"}
 
 
 def _can_use_ffmpeg_pipeline(img_effect: str, img_style: str) -> bool:
@@ -63,6 +69,7 @@ def generate_tiktok_video(
     subtitle_style: str = "tiktok",
     highlight_color: str = "#FFD700",
     img_effect: str = "ken_burns",
+    img_transition: str = "",
     img_style: str = "none",
     zoom_ratio: float = 0.15,
     show_intro: bool = True,
@@ -132,7 +139,7 @@ def generate_tiktok_video(
         return _render_pil_pipeline(
             tmpdir, output_path, audio_path, music_file, music_volume,
             loaded_imgs, sentences, sentence_durations, char_counts, sum(char_counts),
-            duration, fps, size, img_effect, img_style, zoom_ratio,
+            duration, fps, size, img_effect, img_transition, img_style, zoom_ratio,
             subtitle_style, highlight_color, logo_img, logo_position,
             book_title, cta, show_intro, show_outro, intro_bg_path, outro_bg_path, persona_name,
             preview_only, hook,
@@ -142,7 +149,7 @@ def generate_tiktok_video(
 def _render_pil_pipeline(
     tmpdir, output_path, audio_path, music_file, music_volume,
     loaded_imgs, sentences, sentence_durations, char_counts, total_chars,
-    duration, fps, size, img_effect, img_style, zoom_ratio,
+    duration, fps, size, img_effect, img_transition, img_style, zoom_ratio,
     subtitle_style, highlight_color, logo_img, logo_position,
     book_title, cta, show_intro, show_outro, intro_bg_path, outro_bg_path, persona_name="",
     preview_only=False, hook="",
@@ -228,13 +235,20 @@ def _render_pil_pipeline(
         sent_to_img = [min(int(i * n_img / n_sent), n_img - 1) for i in range(n_sent)]
 
     time_elapsed = 0.0
-    use_cache = img_effect == "none" and img_style in ("none", "") and not transition_type
     prev_cache_key = None
     prev_frame_bytes = None
     prev_img_idx = -1
-    # Determine transition type from img_effect
+    # Determine transition type: explicit param takes priority, else derive from img_effect
     from video.effects import apply_transition, TRANSITION_FRAMES
-    transition_type = {"whip_pan": "whip_pan", "glitch_trans": "glitch_trans", "shutter": "shutter", "zoom_through": "zoom_through", "split_reveal": "split_reveal", "velocity": "zoom_through"}.get(img_effect, "")
+    transition_type = img_transition or {
+        "whip_pan": "whip_pan", "glitch_trans": "glitch_trans", "shutter": "shutter",
+        "zoom_through": "zoom_through", "split_reveal": "split_reveal", "velocity": "zoom_through",
+        "circle_iris": "circle_iris", "slip": "slip", "scroll_h": "scroll_h",
+        "scroll_v": "scroll_v", "rotate_wipe": "rotate_wipe", "zoom_in": "zoom_in",
+        "shooting_frame": "shooting_frame", "countdown": "countdown",
+        "switch_on": "switch_on", "switch_off": "switch_off",
+    }.get(img_effect, "")
+    use_cache = img_effect == "none" and img_style in ("none", "") and not transition_type
     # If using a transition effect, base motion is ken_burns
     base_effect = "ken_burns" if transition_type else img_effect
 

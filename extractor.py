@@ -9,7 +9,8 @@ from pathlib import Path
 import fitz  # PyMuPDF
 import httpx
 
-SHOPEE_BROWSER_DIR = "/tmp/shopee-session"
+import tempfile
+SHOPEE_BROWSER_DIR = str(Path(tempfile.gettempdir()) / "shopee-session")
 
 
 @dataclass
@@ -24,6 +25,7 @@ class BookInfo:
     source: str = ""  # "pdf" or "shopee"
     rating: float | None = None
     rating_count: int = 0
+    sold_count: int = 0
     reviews: list[dict] = field(default_factory=list)
 
 

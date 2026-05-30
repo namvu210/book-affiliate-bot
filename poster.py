@@ -140,7 +140,7 @@ async def _post_facebook_reel(req: PostRequest) -> PostResult:
 async def _post_tiktok(req: PostRequest) -> PostResult:
     access_token = get_access_token("tiktok")
     if not access_token:
-        return PostResult(platform="tiktok", success=False, message="TikTok chưa kết nối.")
+        return PostResult(platform="tiktok", success=False, message="TikTok chưa kết nối. Vào Settings để kết nối lại.")
 
     video_path = _resolve_video(req.video_path)
     if not video_path:
@@ -188,7 +188,7 @@ async def _post_tiktok(req: PostRequest) -> PostResult:
                 msg += f" Nhớ thêm link affiliate: {req.affiliate_link}"
             return PostResult(platform="tiktok", success=True, message=msg, post_id=publish_id)
     except Exception as e:
-        return PostResult(platform="tiktok", success=False, message=str(e))
+        return PostResult(platform="tiktok", success=False, message=str(e) or f"TikTok error: {type(e).__name__}")
 
 
 @_adapter("youtube")
@@ -201,8 +201,9 @@ async def _post_youtube(req: PostRequest) -> PostResult:
     if not video_path:
         return PostResult(platform="youtube", success=False, message=f"Video không tồn tại: {req.video_path}")
 
-    title = req.title[:100] if req.title else "Product Review"
-    description = _build_caption(req, include_affiliate=True, suffix="#Shorts")
+    raw_title = req.title[:90] if req.title else "Product Review"
+    title = f"{raw_title} #Shorts"
+    description = _build_caption(req, include_affiliate=True)
 
     try:
         async with httpx.AsyncClient(timeout=120) as client:
@@ -211,7 +212,7 @@ async def _post_youtube(req: PostRequest) -> PostResult:
                 "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status",
                 headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"},
                 json={"snippet": {"title": title, "description": description, "categoryId": "22"},
-                      "status": {"privacyStatus": "private", "selfDeclaredMadeForKids": False}})
+                      "status": {"privacyStatus": "public", "selfDeclaredMadeForKids": False}})
             if init.status_code != 200:
                 return PostResult(platform="youtube", success=False, message=f"Init failed: {init.json().get('error', {}).get('message', init.text[:200])}")
 
@@ -236,16 +237,187 @@ async def _post_youtube(req: PostRequest) -> PostResult:
                 except Exception as e:
                     log.warning(f"youtube: Comment failed: {e}")
 
-            return PostResult(platform="youtube", success=True, message="✅ Đã upload YouTube (private)!", post_id=video_id)
+            return PostResult(platform="youtube", success=True, message="✅ Đã đăng YouTube Shorts!", post_id=video_id)
     except Exception as e:
-        return PostResult(platform="youtube", success=False, message=str(e))
+        return PostResult(platform="youtube", success=False, message=str(e) or f"YouTube error: {type(e).__name__}")
+
+
+@_adapter("instagram")
+async def _post_instagram_reel(req: PostRequest) -> PostResult:
+    from auth import get_facebook_token, get_facebook_pages
+    pages = get_facebook_pages()
+    ig_page = next((p for p in pages if p.get("instagram_business_account_id")), None)
+    if not ig_page:
+        return PostResult(platform="instagram", success=False, message="Instagram chưa liên kết.")
+
+    access_token = ig_page["access_token"]
+    ig_user_id = ig_page["instagram_business_account_id"]
+
+    video_path = _resolve_video(req.video_path)
+    if not video_path:
+        return PostResult(platform="instagram", success=False, message=f"Video không tồn tại: {req.video_path}")
+
+    caption = _build_caption(req, include_affiliate=True)
+    file_size = Path(video_path).stat().st_size
+
+    try:
+        async with httpx.AsyncClient(timeout=180) as client:
+            # Step 1: Create container with resumable upload
+            log.info(f"Instagram: creating container for IG user {ig_user_id}, video={video_path} ({file_size} bytes)")
+            init = (await client.post(f"https://graph.facebook.com/v21.0/{ig_user_id}/media", params={
+                "access_token": access_token,
+                "media_type": "REELS",
+                "upload_type": "resumable",
+                "caption": caption,
+            })).json()
+            if "id" not in init:
+                log.warning(f"Instagram: init failed: {init}")
+                return PostResult(platform="instagram", success=False, message=f"Init failed: {init.get('error', {}).get('message', str(init))}")
+
+            container_id = init["id"]
+            upload_uri = init.get("uri")
+            log.info(f"Instagram: container created: {container_id}")
+
+            if not upload_uri:
+                return PostResult(platform="instagram", success=False, message="No upload URI returned")
+
+            # Step 2: Upload video
+            with open(video_path, "rb") as f:
+                upload_resp = await client.post(upload_uri,
+                    headers={
+                        "Authorization": f"OAuth {access_token}",
+                        "offset": "0",
+                        "file_size": str(file_size),
+                    },
+                    content=f.read())
+            if upload_resp.status_code not in (200, 201):
+                log.warning(f"Instagram: upload failed: HTTP {upload_resp.status_code} — {upload_resp.text[:200]}")
+                return PostResult(platform="instagram", success=False, message=f"Upload failed: HTTP {upload_resp.status_code}")
+            log.info(f"Instagram: video uploaded OK")
+
+            # Step 3: Poll container status
+            for poll_i in range(20):
+                await asyncio.sleep(5)
+                resp = await client.get(f"https://graph.facebook.com/v21.0/{container_id}", params={
+                    "access_token": access_token,
+                    "fields": "status_code,status",
+                })
+                if resp.status_code != 200:
+                    log.warning(f"Instagram: poll {poll_i} failed: HTTP {resp.status_code} — {resp.text[:300]}")
+                    return PostResult(platform="instagram", success=False, message=f"Poll failed: HTTP {resp.status_code} — {resp.text[:200]}")
+                status = resp.json()
+                code = status.get("status_code")
+                log.info(f"Instagram: poll {poll_i} status={code}")
+                if code == "FINISHED":
+                    break
+                elif code == "ERROR":
+                    log.warning(f"Instagram: processing error: {status}")
+                    return PostResult(platform="instagram", success=False, message=f"Processing failed: {status.get('status', '')}")
+            else:
+                log.warning(f"Instagram: timeout after 20 polls")
+                return PostResult(platform="instagram", success=False, message="Video processing timeout")
+
+            # Step 4: Publish
+            log.info(f"Instagram: publishing container {container_id}")
+            pub = (await client.post(f"https://graph.facebook.com/v21.0/{ig_user_id}/media_publish", params={
+                "access_token": access_token,
+                "creation_id": container_id,
+            })).json()
+            if "id" not in pub:
+                log.warning(f"Instagram: publish failed: {pub}")
+                return PostResult(platform="instagram", success=False, message=f"Publish failed: {pub.get('error', {}).get('message', str(pub))}")
+
+            log.info(f"Instagram: published! post_id={pub['id']}")
+            return PostResult(platform="instagram", success=True, message="✅ Đã đăng Instagram Reel!", post_id=pub["id"])
+    except Exception as e:
+        return PostResult(platform="instagram", success=False, message=str(e) or f"Instagram error: {type(e).__name__}")
+
+
+@_adapter("threads")
+async def _post_threads(req: PostRequest) -> PostResult:
+    tokens = _load_tokens()
+    t = tokens.get("threads", {})
+    access_token = get_access_token("threads")
+    if not access_token:
+        return PostResult(platform="threads", success=False, message="Threads chưa kết nối.")
+    user_id = t.get("user_id", "me")
+
+    caption = _build_caption(req, include_affiliate=True)
+    # Truncate to Threads 500-char limit
+    if len(caption) > 500:
+        caption = caption[:497] + "..."
+
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            # Determine media type: video, image, or text-only
+            video_path = _resolve_video(req.video_path) if req.video_path else None
+            container_params: dict = {"text": caption}
+
+            if video_path:
+                # Video post — needs a publicly accessible URL
+                # For now, use image fallback if no public URL available
+                container_params["media_type"] = "VIDEO"
+                container_params["video_url"] = req.video_path if req.video_path.startswith("http") else ""
+                if not container_params["video_url"]:
+                    # Fall back to text-only if no public video URL
+                    container_params.pop("video_url")
+                    container_params["media_type"] = "TEXT"
+            else:
+                container_params["media_type"] = "TEXT"
+
+            # Check if we have a product image URL for image post
+            if container_params["media_type"] == "TEXT" and req.thumbnail_path and req.thumbnail_path.startswith("http"):
+                container_params["media_type"] = "IMAGE"
+                container_params["image_url"] = req.thumbnail_path
+
+            # Step 1: Create container
+            create_resp = (await client.post(
+                f"https://graph.threads.net/v1.0/{user_id}/threads",
+                params={"access_token": access_token},
+                data=container_params,
+            )).json()
+            container_id = create_resp.get("id")
+            if not container_id:
+                return PostResult(platform="threads", success=False,
+                    message=f"Create failed: {create_resp.get('error', {}).get('message', str(create_resp))}")
+
+            # Step 2: Wait for processing (needed for video)
+            if container_params.get("media_type") == "VIDEO":
+                for _ in range(15):
+                    await asyncio.sleep(3)
+                    status_resp = (await client.get(
+                        f"https://graph.threads.net/v1.0/{container_id}",
+                        params={"access_token": access_token, "fields": "status"},
+                    )).json()
+                    status = status_resp.get("status")
+                    if status == "FINISHED":
+                        break
+                    elif status == "ERROR":
+                        return PostResult(platform="threads", success=False, message="Video processing failed")
+            else:
+                await asyncio.sleep(2)
+
+            # Step 3: Publish
+            pub_resp = (await client.post(
+                f"https://graph.threads.net/v1.0/{user_id}/threads_publish",
+                params={"access_token": access_token},
+                data={"creation_id": container_id},
+            )).json()
+            post_id = pub_resp.get("id")
+            if not post_id:
+                return PostResult(platform="threads", success=False,
+                    message=f"Publish failed: {pub_resp.get('error', {}).get('message', str(pub_resp))}")
+
+            return PostResult(platform="threads", success=True, message="✅ Đã đăng Threads!", post_id=post_id)
+    except Exception as e:
+        return PostResult(platform="threads", success=False, message=str(e) or f"Threads error: {type(e).__name__}")
 
 
 # === Request builder ===
 
 def build_post_request(review_data: dict, video_url: str, platform_key: str = "tiktok") -> PostRequest:
     book = review_data.get("book", {})
-    platform_data = review_data.get(platform_key, {})
+    platform_data = review_data.get(platform_key) or review_data.get("facebook") or review_data.get("tiktok") or {}
     video_path = _resolve_video(video_url) or video_url
     images = review_data.get("product_images", [])
     thumbnail = ""

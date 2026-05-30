@@ -73,7 +73,8 @@ def apply_effect(src, effect, gp, lp, all_imgs, img_idx, size, zoom_ratio=0.15):
         rm = (max_c == r) & mask
         hue[rm] = ((g[rm] - b[rm]) / delta[rm]) % 6
         hue = hue / 6.0  # normalize to 0-1
-        sat = np.where(max_c > 0, delta / max_c, 0) / 255.0
+        safe_max = np.where(max_c > 0, max_c, 1)
+        sat = np.where(max_c > 0, delta / safe_max, 0) / 255.0
         # Keep red hues (h<0.1 or h>0.95) with saturation > 0.4
         is_red = ((hue < 0.1) | (hue > 0.95)) & (sat > 0.4)
         gray = np.array(ImageOps.grayscale(bg), dtype=np.uint8)
@@ -195,6 +196,300 @@ def apply_effect(src, effect, gp, lp, all_imgs, img_idx, size, zoom_ratio=0.15):
             bg = Image.merge("RGB", (r, g, b))
         return bg
 
+    # --- Light / Particle overlays ---
+
+    elif effect == "halo":
+        bg = crop_animated(src, gp, size, zoom_ratio)
+        overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        d = ImageDraw.Draw(overlay)
+        cx, cy = W // 2, H // 3
+        radius = int(W * 0.35 + W * 0.05 * math.sin(gp * math.pi * 2))
+        for i in range(30):
+            alpha = int(60 * (1 - i / 30))
+            r = radius + i * 4
+            d.ellipse([(cx - r, cy - r), (cx + r, cy + r)], outline=(255, 240, 200, alpha))
+        return Image.alpha_composite(bg.convert("RGBA"), overlay).convert("RGB")
+
+    elif effect == "scanning_light":
+        bg = crop_animated(src, gp, size, zoom_ratio)
+        overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        d = ImageDraw.Draw(overlay)
+        y_pos = int(H * ((gp * 2) % 1.0))
+        for i in range(60):
+            alpha = int(80 * (1 - abs(i - 30) / 30))
+            d.rectangle([(0, y_pos - 30 + i), (W, y_pos - 30 + i + 1)], fill=(255, 255, 255, alpha))
+        return Image.alpha_composite(bg.convert("RGBA"), overlay).convert("RGB")
+
+    elif effect == "light_leak":
+        bg = crop_animated(src, gp, size, zoom_ratio)
+        overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        d = ImageDraw.Draw(overlay)
+        phase = gp * math.pi * 2
+        cx = int(W * (0.7 + 0.3 * math.sin(phase)))
+        cy = int(H * 0.3)
+        for i in range(50):
+            alpha = int(40 * (1 - i / 50))
+            r = int(W * 0.2) + i * 8
+            d.ellipse([(cx - r, cy - r), (cx + r, cy + r)], fill=(255, 180, 80, alpha))
+        return Image.alpha_composite(bg.convert("RGBA"), overlay).convert("RGB")
+
+    elif effect == "sparkles":
+        import random
+        random.seed(int(gp * 1000))
+        bg = crop_animated(src, gp, size, zoom_ratio)
+        overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        d = ImageDraw.Draw(overlay)
+        for _ in range(25):
+            x, y = random.randint(0, W), random.randint(0, H)
+            sz = random.randint(2, 6)
+            alpha = random.randint(150, 255)
+            d.ellipse([(x, y), (x + sz, y + sz)], fill=(255, 255, 255, alpha))
+        return Image.alpha_composite(bg.convert("RGBA"), overlay).convert("RGB")
+
+    elif effect == "gold_sparkles":
+        import random
+        random.seed(int(gp * 1000))
+        bg = crop_animated(src, gp, size, zoom_ratio)
+        overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        d = ImageDraw.Draw(overlay)
+        colors = [(255, 215, 0), (255, 200, 50), (255, 230, 100)]
+        for _ in range(30):
+            x, y = random.randint(0, W), random.randint(0, H)
+            sz = random.randint(2, 8)
+            c = colors[random.randint(0, 2)]
+            alpha = random.randint(150, 255)
+            d.ellipse([(x, y), (x + sz, y + sz)], fill=(*c, alpha))
+        return Image.alpha_composite(bg.convert("RGBA"), overlay).convert("RGB")
+
+    elif effect == "snowfall":
+        import random
+        bg = crop_animated(src, gp, size, zoom_ratio)
+        overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        d = ImageDraw.Draw(overlay)
+        random.seed(42)
+        for i in range(40):
+            x_base = random.randint(0, W)
+            speed = random.uniform(0.5, 1.5)
+            drift = random.uniform(-0.3, 0.3)
+            x = int((x_base + drift * gp * W) % W)
+            y = int((gp * speed * H + i * H / 40) % H)
+            sz = random.randint(3, 7)
+            d.ellipse([(x, y), (x + sz, y + sz)], fill=(255, 255, 255, 200))
+        return Image.alpha_composite(bg.convert("RGBA"), overlay).convert("RGB")
+
+    elif effect == "glitter_bomb":
+        import random
+        random.seed(int(gp * 500))
+        bg = crop_animated(src, gp, size, zoom_ratio)
+        overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        d = ImageDraw.Draw(overlay)
+        colors = [(255, 215, 0), (255, 100, 200), (100, 200, 255), (200, 255, 100), (255, 255, 255)]
+        for _ in range(50):
+            x, y = random.randint(0, W), random.randint(0, H)
+            sz = random.randint(2, 6)
+            c = colors[random.randint(0, len(colors) - 1)]
+            alpha = random.randint(120, 255)
+            d.ellipse([(x, y), (x + sz, y + sz)], fill=(*c, alpha))
+        return Image.alpha_composite(bg.convert("RGBA"), overlay).convert("RGB")
+
+    elif effect == "starlights":
+        import random
+        random.seed(int(gp * 800))
+        bg = crop_animated(src, gp, size, zoom_ratio)
+        overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        d = ImageDraw.Draw(overlay)
+        for _ in range(15):
+            x, y = random.randint(20, W - 20), random.randint(20, H - 20)
+            sz = random.randint(8, 20)
+            alpha = random.randint(100, 220)
+            # 4-point star
+            d.line([(x - sz, y), (x + sz, y)], fill=(255, 255, 255, alpha), width=2)
+            d.line([(x, y - sz), (x, y + sz)], fill=(255, 255, 255, alpha), width=2)
+            d.line([(x - sz//2, y - sz//2), (x + sz//2, y + sz//2)], fill=(255, 255, 255, alpha // 2), width=1)
+            d.line([(x + sz//2, y - sz//2), (x - sz//2, y + sz//2)], fill=(255, 255, 255, alpha // 2), width=1)
+        return Image.alpha_composite(bg.convert("RGBA"), overlay).convert("RGB")
+
+    elif effect == "neon_glow":
+        bg = crop_animated(src, gp, size, zoom_ratio)
+        import numpy as np
+        arr = np.array(bg, dtype=np.float32)
+        bright = np.max(arr, axis=2)
+        mask = (bright > 180).astype(np.float32)
+        mask_img = Image.fromarray((mask * 255).astype(np.uint8), "L")
+        glow = mask_img.filter(ImageFilter.GaussianBlur(radius=20))
+        glow_colored = Image.merge("RGB", (glow, Image.new("L", (W, H), 0), glow))
+        return Image.blend(bg, glow_colored, 0.3)
+
+    elif effect == "shockwave":
+        bg = crop_animated(src, gp, size, zoom_ratio)
+        overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        d = ImageDraw.Draw(overlay)
+        cx, cy = W // 2, H // 2
+        radius = int(max(W, H) * gp)
+        alpha = int(150 * (1 - gp))
+        for i in range(5):
+            r = radius + i * 3
+            d.ellipse([(cx - r, cy - r), (cx + r, cy + r)], outline=(255, 255, 255, max(0, alpha - i * 20)))
+        return Image.alpha_composite(bg.convert("RGBA"), overlay).convert("RGB")
+
+    # --- Color / Noise effects ---
+
+    elif effect == "chromatic":
+        bg = crop_animated(src, gp, size, zoom_ratio)
+        offset = int(4 + 3 * math.sin(gp * math.pi * 2))
+        r, g, b = bg.split()
+        r = r.transform(r.size, Image.AFFINE, (1, 0, offset, 0, 1, 0))
+        b = b.transform(b.size, Image.AFFINE, (1, 0, -offset, 0, 1, 0))
+        return Image.merge("RGB", (r, g, b))
+
+    elif effect == "club_mood":
+        bg = crop_animated(src, gp, size, zoom_ratio)
+        phase = gp * math.pi * 4
+        r_tint = int(128 + 127 * math.sin(phase))
+        g_tint = int(128 + 127 * math.sin(phase + 2.1))
+        b_tint = int(128 + 127 * math.sin(phase + 4.2))
+        tint = Image.new("RGB", (W, H), (r_tint, g_tint, b_tint))
+        return Image.blend(bg, tint, 0.2)
+
+    elif effect == "cyberpunk":
+        bg = crop_animated(src, gp, size, zoom_ratio)
+        from PIL import ImageEnhance
+        bg = ImageEnhance.Contrast(bg).enhance(1.4)
+        tint = Image.new("RGB", (W, H), (20, 0, 60))
+        bg = Image.blend(bg, tint, 0.15)
+        # Scanlines
+        overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        d = ImageDraw.Draw(overlay)
+        for y in range(0, H, 4):
+            d.line([(0, y), (W, y)], fill=(0, 255, 200, 20))
+        return Image.alpha_composite(bg.convert("RGBA"), overlay).convert("RGB")
+
+    elif effect == "negative":
+        import numpy as np
+        bg = crop_animated(src, gp, size, zoom_ratio)
+        arr = np.array(bg, dtype=np.uint8)
+        return Image.fromarray(255 - arr)
+
+    elif effect == "black_noise":
+        import random, numpy as np
+        random.seed(int(gp * 2000))
+        bg = crop_animated(src, gp, size, zoom_ratio)
+        noise = np.random.randint(0, 40, (H, W, 3), dtype=np.uint8)
+        bg_arr = np.array(bg, dtype=np.int16)
+        result = np.clip(bg_arr + noise - 20, 0, 255).astype(np.uint8)
+        return Image.fromarray(result)
+
+    elif effect == "film_grain":
+        import numpy as np
+        bg = crop_animated(src, gp, size, zoom_ratio)
+        noise = np.random.randint(0, 30, (H, W), dtype=np.uint8)
+        noise_rgb = np.stack([noise, noise, noise], axis=2)
+        bg_arr = np.array(bg, dtype=np.int16)
+        result = np.clip(bg_arr + noise_rgb - 15, 0, 255).astype(np.uint8)
+        return Image.fromarray(result)
+
+    elif effect == "x_signal":
+        import random
+        bg = crop_animated(src, gp, size, zoom_ratio)
+        random.seed(int(gp * 300))
+        if random.random() > 0.6:
+            # Horizontal tear
+            y1 = random.randint(0, H - 30)
+            strip_h = random.randint(5, 30)
+            strip = bg.crop((0, y1, W, y1 + strip_h))
+            bg.paste(strip, (random.randint(-40, 40), y1))
+        # VHS-style color offset
+        r, g, b = bg.split()
+        offset = int(3 * math.sin(gp * math.pi * 6))
+        g = g.transform(g.size, Image.AFFINE, (1, 0, 0, 0, 1, offset))
+        return Image.merge("RGB", (r, g, b))
+
+    elif effect == "flash_2":
+        bg = crop_animated(src, gp, size, zoom_ratio)
+        # Double flash pattern
+        pulse = abs(math.sin(gp * math.pi * 12))
+        if pulse > 0.92:
+            return Image.blend(bg, Image.new("RGB", (W, H), (255, 255, 255)), 0.7)
+        return bg
+
+    elif effect == "black_flash":
+        bg = crop_animated(src, gp, size, zoom_ratio)
+        pulse = abs(math.sin(gp * math.pi * 10))
+        if pulse > 0.93:
+            return Image.blend(bg, Image.new("RGB", (W, H), (0, 0, 0)), 0.8)
+        return bg
+
+    elif effect == "camera_focus":
+        bg = crop_animated(src, gp, size, zoom_ratio)
+        # Center sharp, edges blurred (rack focus effect)
+        blurred = bg.filter(ImageFilter.GaussianBlur(radius=8))
+        mask = Image.new("L", (W, H), 0)
+        d = ImageDraw.Draw(mask)
+        cx, cy = W // 2, H // 2
+        r = int(min(W, H) * 0.3)
+        d.ellipse([(cx - r, cy - r), (cx + r, cy + r)], fill=255)
+        mask = mask.filter(ImageFilter.GaussianBlur(radius=40))
+        return Image.composite(bg, blurred, mask)
+
+    elif effect == "star_power":
+        import random
+        random.seed(int(gp * 600))
+        bg = crop_animated(src, gp, size, zoom_ratio)
+        from PIL import ImageEnhance
+        bg = ImageEnhance.Brightness(bg).enhance(1.1)
+        overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        d = ImageDraw.Draw(overlay)
+        for _ in range(20):
+            x, y = random.randint(0, W), random.randint(0, H)
+            sz = random.randint(10, 25)
+            alpha = random.randint(80, 180)
+            # Draw a simple cross star
+            d.line([(x - sz, y), (x + sz, y)], fill=(255, 255, 200, alpha), width=2)
+            d.line([(x, y - sz), (x, y + sz)], fill=(255, 255, 200, alpha), width=2)
+        return Image.alpha_composite(bg.convert("RGBA"), overlay).convert("RGB")
+
+    elif effect == "rainbow_heart":
+        import random
+        random.seed(int(gp * 400))
+        bg = center_crop(src, W, H) if src.size == (W, H) else crop_animated(src, gp, size, zoom_ratio)
+        overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        d = ImageDraw.Draw(overlay)
+        colors = [(255, 0, 0), (255, 127, 0), (255, 255, 0), (0, 255, 0), (0, 127, 255), (139, 0, 255)]
+        for _ in range(16):
+            x, y = random.randint(40, W - 40), random.randint(40, H - 40)
+            sz = random.randint(30, 55)
+            c = colors[random.randint(0, len(colors) - 1)]
+            alpha = random.randint(140, 220)
+            r = sz // 3
+            d.ellipse([(x - r, y - r), (x + r, y + r)], fill=(*c, alpha))
+            d.ellipse([(x + r - r//2, y - r), (x + r + r + r//2, y + r)], fill=(*c, alpha))
+            d.polygon([(x - r, y + r//2), (x + r * 2 + r//2, y + r//2), (x + r//2 + r//4, y + sz)], fill=(*c, alpha))
+        return Image.alpha_composite(bg.convert("RGBA"), overlay).convert("RGB")
+
+    elif effect == "pink_hearts":
+        import random
+        random.seed(int(gp * 400))
+        bg = center_crop(src, W, H) if src.size == (W, H) else crop_animated(src, gp, size, zoom_ratio)
+        overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        d = ImageDraw.Draw(overlay)
+        for _ in range(20):
+            x, y = random.randint(40, W - 40), random.randint(40, H - 40)
+            sz = random.randint(30, 60)
+            alpha = random.randint(140, 240)
+            c = (255, random.randint(80, 160), random.randint(150, 200))
+            # Heart shape: two overlapping circles + triangle point
+            r = sz // 3
+            d.ellipse([(x - r, y - r), (x + r, y + r)], fill=(*c, alpha))
+            d.ellipse([(x + r - r//2, y - r), (x + r + r + r//2, y + r)], fill=(*c, alpha))
+            d.polygon([(x - r, y + r//2), (x + r * 2 + r//2, y + r//2), (x + r//2 + r//4, y + sz)], fill=(*c, alpha))
+        return Image.alpha_composite(bg.convert("RGBA"), overlay).convert("RGB")
+
+    # --- Body-aware effects (mediapipe) ---
+
+    elif effect in ("aura", "contour", "wings", "thermal_aura", "phantom", "ghost"):
+        from video.body import apply_body_effect
+        return apply_body_effect(src, effect, gp, size)
+
     else:  # none
         return center_crop(src, W, H)
 
@@ -284,13 +579,118 @@ def apply_transition(prev_img, next_img, progress, transition, size):
         # Horizontal split from center revealing next image
         split_h = int(H * progress / 2)
         result = img2.copy()
-        # Top part of img1 slides up
         if split_h < H // 2:
             top = img1.crop((0, 0, W, H // 2 - split_h))
             bottom = img1.crop((0, H // 2 + split_h, W, H))
             result.paste(top, (0, 0))
             result.paste(bottom, (0, H // 2 + split_h))
         return result
+
+    elif transition == "circle_iris":
+        # Circle wipe expanding from center
+        mask = Image.new("L", (W, H), 0)
+        d = ImageDraw.Draw(mask)
+        max_r = int(math.sqrt(W**2 + H**2) / 2)
+        r = int(max_r * progress)
+        cx, cy = W // 2, H // 2
+        d.ellipse([(cx - r, cy - r), (cx + r, cy + r)], fill=255)
+        return Image.composite(img2, img1, mask)
+
+    elif transition == "slip":
+        # img1 slides down, img2 revealed behind
+        offset = int(H * progress)
+        canvas = img2.copy()
+        shifted = img1.crop((0, 0, W, H - offset))
+        canvas.paste(shifted, (0, offset))
+        return canvas
+
+    elif transition == "scroll_h":
+        # Horizontal scroll — img1 exits left, img2 enters right
+        offset = int(W * progress)
+        canvas = Image.new("RGB", (W, H), (0, 0, 0))
+        canvas.paste(img1.crop((offset, 0, W, H)), (0, 0))
+        canvas.paste(img2.crop((0, 0, offset, H)), (W - offset, 0))
+        return canvas
+
+    elif transition == "scroll_v":
+        # Vertical scroll — img1 exits up, img2 enters below
+        offset = int(H * progress)
+        canvas = Image.new("RGB", (W, H), (0, 0, 0))
+        canvas.paste(img1.crop((0, offset, W, H)), (0, 0))
+        canvas.paste(img2.crop((0, 0, W, offset)), (0, H - offset))
+        return canvas
+
+    elif transition == "rotate_wipe":
+        # Rotating mask reveal
+        mask = Image.new("L", (W, H), 0)
+        d = ImageDraw.Draw(mask)
+        cx, cy = W // 2, H // 2
+        angle = progress * 360
+        # Draw a pie slice that grows with progress
+        d.pieslice([(cx - W, cy - H), (cx + W, cy + H)], start=-90, end=-90 + angle, fill=255)
+        return Image.composite(img2, img1, mask)
+
+    elif transition == "zoom_in":
+        # img2 grows from center point
+        scale = max(0.01, progress)
+        new_w, new_h = int(W * scale), int(H * scale)
+        small = img2.resize((new_w, new_h), Image.LANCZOS)
+        canvas = img1.copy()
+        x = (W - new_w) // 2
+        y = (H - new_h) // 2
+        canvas.paste(small, (x, y))
+        return canvas
+
+    elif transition == "shooting_frame":
+        # Frame border shrinks in revealing img2
+        border = int(max(W, H) * 0.5 * (1 - progress))
+        if border <= 0:
+            return img2
+        canvas = img2.copy()
+        # Draw border from img1
+        top = img1.crop((0, 0, W, border))
+        bot = img1.crop((0, H - border, W, H))
+        left = img1.crop((0, 0, border, H))
+        right = img1.crop((W - border, 0, W, H))
+        canvas.paste(top, (0, 0))
+        canvas.paste(bot, (0, H - border))
+        canvas.paste(left, (0, 0))
+        canvas.paste(right, (W - border, 0))
+        return canvas
+
+    elif transition == "countdown":
+        # Flash black then reveal (countdown feel)
+        if progress < 0.4:
+            return Image.blend(img1, Image.new("RGB", (W, H), (0, 0, 0)), progress / 0.4)
+        elif progress < 0.6:
+            return Image.new("RGB", (W, H), (0, 0, 0))
+        else:
+            p = (progress - 0.6) / 0.4
+            return Image.blend(Image.new("RGB", (W, H), (0, 0, 0)), img2, p)
+
+    elif transition == "switch_on":
+        # TV switch on — horizontal line expands to full
+        line_h = int(H * progress)
+        if line_h <= 0:
+            return img1
+        canvas = Image.new("RGB", (W, H), (0, 0, 0))
+        y_start = (H - line_h) // 2
+        strip = img2.crop((0, (H - line_h) // 2, W, (H + line_h) // 2))
+        canvas.paste(strip, (0, y_start))
+        return canvas
+
+    elif transition == "switch_off":
+        # TV switch off — shrinks to horizontal line then black
+        line_h = int(H * (1 - progress))
+        if line_h <= 0:
+            return img2
+        canvas = Image.new("RGB", (W, H), (0, 0, 0))
+        y_start = (H - line_h) // 2
+        strip = img1.crop((0, (H - line_h) // 2, W, (H + line_h) // 2))
+        canvas.paste(strip, (0, y_start))
+        if progress > 0.8:
+            return Image.blend(canvas, img2, (progress - 0.8) / 0.2)
+        return canvas
 
     # Default: simple crossfade
     return Image.blend(img1, img2, progress)

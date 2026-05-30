@@ -6,7 +6,7 @@ from pathlib import Path
 
 from config import log, make_ts, output_path, output_url, OUTPUT_DIR
 from extractor import BookInfo, extract_from_shopee, download_images
-from reviewer import generate_review_all_platforms, generate_json
+from reviewer import generate_json
 from tts import generate_audio
 from affiliate import get_affiliate_link
 
@@ -27,6 +27,13 @@ class PipelineInput:
     elevenlabs_voice_id: str = "T4jrQr9x0Y24833yKCWR"
     voice_speed: int = 140
     platforms: list[str] = field(default_factory=lambda: ["facebook", "tiktok"])
+    scraped_reviews: list[dict] = field(default_factory=list)
+    scraped_rating: float | None = None
+    scraped_rating_count: int = 0
+    scraped_sold_count: int = 0
+    scraped_description: str = ""
+    scraped_price: str = ""
+    style_id: str = "auto"
 
 
 @dataclass
@@ -47,6 +54,19 @@ async def process_product(inp: PipelineInput) -> PipelineResult:
     # Step 1: Extract product info
     try:
         book = await extract_from_shopee(inp.url)
+        # Enrich with scraped data from extension
+        if inp.scraped_rating and not book.rating:
+            book.rating = inp.scraped_rating
+        if inp.scraped_rating_count and not book.rating_count:
+            book.rating_count = inp.scraped_rating_count
+        if inp.scraped_sold_count and not book.sold_count:
+            book.sold_count = inp.scraped_sold_count
+        if inp.scraped_reviews and not book.reviews:
+            book.reviews = inp.scraped_reviews
+        if inp.scraped_description and not book.description:
+            book.description = inp.scraped_description
+        if inp.scraped_price and not book.price:
+            book.price = inp.scraped_price
         result["book"] = {
             "title": book.title, "author": book.author, "price": book.price,
             "shopee_url": book.shopee_url, "source": book.source,
@@ -73,7 +93,7 @@ async def process_product(inp: PipelineInput) -> PipelineResult:
     from reviewer import generate_review
     _fallback = {"social_post": "", "review": "", "hashtags": [], "hook": "", "key_points": [], "cta": ""}
     try:
-        review = await asyncio.to_thread(generate_review, book, inp.audience, "facebook", inp.custom_audience, inp.word_count_fb)
+        review = await asyncio.to_thread(generate_review, book, inp.audience, "facebook", inp.custom_audience, inp.word_count_fb, inp.style_id)
         log.info(f"Review generated ({len(review.get('social_post',''))} chars)")
     except Exception as e:
         review = {**_fallback, "review": f"Error: {e}"}
@@ -96,7 +116,7 @@ async def process_product(inp: PipelineInput) -> PipelineResult:
         if 5 <= len(images) <= 14:
             from imagegen import generate_lifestyle_images, MAX_AI_IMAGES
             persona = inp.custom_audience or {"name": "Khách hàng phổ thông", "focus": "chất lượng sản phẩm"}
-            num_ai = 4 if len(images) <= 7 else 3 if len(images) <= 10 else 2
+            num_ai = 3 if len(images) <= 7 else 2 if len(images) <= 10 else 1
             ai_images = await generate_lifestyle_images(book.title, persona, num_ai, ts, images[:3] if images else [])
             images.extend(ai_images)
             log.info(f"AI images: {len(ai_images)} generated (real={len(images)-len(ai_images)})")
@@ -151,10 +171,10 @@ async def _add_audio(result: dict, ts: str, voice_type: str = "edge", elevenlabs
         return result
     if cta and cta not in text:
         text = text.rstrip() + " " + cta
-    audio_path = str(output_path(ts, "facebook.mp3"))
+    audio_path = str(output_path(ts, "audio.mp3"))
     try:
         await generate_audio(text, audio_path, speed=speed, voice_type=voice_type, elevenlabs_voice_id=elevenlabs_voice_id, edge_voice=edge_voice)
-        audio_url = output_url(ts, "facebook.mp3")
+        audio_url = output_url(ts, "audio.mp3")
         for platform in ["facebook", "tiktok", "youtube"]:
             if result.get(platform):
                 result[platform]["audio_url"] = audio_url

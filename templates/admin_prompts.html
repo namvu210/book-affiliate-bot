@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Prompt Management</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #e0e0e0; min-height: 100vh; }
+a { color: #64b5f6; }
+.container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+header h1 { font-size: 1.5rem; }
+header a { font-size: 0.9rem; text-decoration: none; }
+
+.layout { display: grid; grid-template-columns: 280px 1fr; gap: 20px; }
+@media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+
+/* Sidebar */
+.sidebar { background: #16213e; border-radius: 12px; padding: 16px; max-height: calc(100vh - 140px); overflow-y: auto; }
+.sidebar h3 { margin-bottom: 12px; font-size: 0.9rem; color: #888; text-transform: uppercase; }
+.preset-item { padding: 10px 12px; border-radius: 8px; cursor: pointer; margin-bottom: 6px; transition: background 0.2s; }
+.preset-item:hover { background: #1a2744; }
+.preset-item.active { background: #0f3460; border: 1px solid #64b5f6; }
+.preset-item .name { font-weight: 600; font-size: 0.95rem; }
+.preset-item .desc { font-size: 0.8rem; color: #888; margin-top: 2px; }
+.btn-new { width: 100%; padding: 10px; border: 2px dashed #444; border-radius: 8px; background: none; color: #888; cursor: pointer; margin-top: 12px; font-size: 0.9rem; }
+.btn-new:hover { border-color: #64b5f6; color: #64b5f6; }
+
+/* Editor */
+.editor { background: #16213e; border-radius: 12px; padding: 24px; }
+.field { margin-bottom: 16px; }
+.field label { display: block; font-size: 0.85rem; color: #888; margin-bottom: 4px; }
+.field input, .field textarea, .field select { width: 100%; padding: 10px 12px; border: 1px solid #333; border-radius: 6px; background: #0f3460; color: #e0e0e0; font-size: 0.95rem; }
+.field textarea { font-family: 'JetBrains Mono', 'Fira Code', monospace; min-height: 400px; resize: vertical; line-height: 1.5; }
+.field input:focus, .field textarea:focus { outline: none; border-color: #64b5f6; }
+
+.actions { display: flex; gap: 10px; margin-top: 16px; }
+.btn { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 0.9rem; font-weight: 600; }
+.btn-primary { background: #64b5f6; color: #111; }
+.btn-primary:hover { background: #90caf9; }
+.btn-danger { background: #e57373; color: #111; }
+.btn-danger:hover { background: #ef9a9a; }
+.btn-secondary { background: #333; color: #e0e0e0; }
+.btn-secondary:hover { background: #444; }
+
+/* Variables reference */
+.vars-ref { margin-top: 16px; padding: 12px; background: #0f3460; border-radius: 8px; font-size: 0.8rem; }
+.vars-ref summary { cursor: pointer; font-weight: 600; color: #64b5f6; }
+.vars-ref code { background: #1a2744; padding: 2px 6px; border-radius: 3px; font-size: 0.8rem; }
+
+/* A/B section */
+.ab-section { margin-top: 24px; background: #16213e; border-radius: 12px; padding: 24px; }
+.ab-section h3 { margin-bottom: 16px; }
+.ab-controls { display: flex; gap: 12px; align-items: end; flex-wrap: wrap; }
+.ab-controls .field { margin-bottom: 0; }
+.ab-status { margin-top: 12px; padding: 12px; background: #0f3460; border-radius: 8px; font-size: 0.9rem; }
+.ab-status.active { border: 1px solid #66bb6a; }
+
+/* History */
+.history-section { margin-top: 24px; background: #16213e; border-radius: 12px; padding: 24px; }
+.history-section h3 { margin-bottom: 12px; }
+.history-list { max-height: 300px; overflow-y: auto; }
+.history-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border-bottom: 1px solid #222; font-size: 0.85rem; }
+.history-item:last-child { border-bottom: none; }
+.history-item .meta { color: #888; }
+
+.toast { position: fixed; bottom: 20px; right: 20px; padding: 12px 20px; background: #66bb6a; color: #111; border-radius: 8px; font-weight: 600; display: none; z-index: 999; }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>Prompt Management</h1>
+    <a href="/">← Quay lại app</a>
+  </header>
+
+  <div class="layout">
+    <div class="sidebar">
+      <h3>Style Presets</h3>
+      <div id="preset-list"></div>
+      <button class="btn-new" onclick="newPreset()">+ Tạo mới</button>
+    </div>
+
+    <div class="editor-wrap">
+      <div class="editor" id="editor" style="display:none;">
+        <div class="field">
+          <label>ID (slug, không dấu, dùng dấu gạch ngang)</label>
+          <input id="ed-id" placeholder="my-style">
+        </div>
+        <div class="field">
+          <label>Tên hiển thị</label>
+          <input id="ed-name" placeholder="Tên phong cách">
+        </div>
+        <div class="field">
+          <label>Mô tả</label>
+          <input id="ed-desc" placeholder="Mô tả ngắn">
+        </div>
+        <div class="field">
+          <label>Template</label>
+          <textarea id="ed-template" placeholder="Nội dung prompt template..."></textarea>
+        </div>
+        <details class="vars-ref">
+          <summary>Biến có thể dùng (click để xem)</summary>
+          <p style="margin-top:8px;">
+            <code>{{product_name}}</code> <code>{{author}}</code> <code>{{description}}</code>
+            <code>{{price_line}}</code> <code>{{shopee_url_line}}</code> <code>{{social_proof_section}}</code>
+            <code>{{audience_name}}</code> <code>{{audience_tone}}</code> <code>{{audience_focus}}</code>
+            <code>{{platform}}</code> <code>{{word_count}}</code> <code>{{platform_guide}}</code>
+            <code>{{style_hint}}</code> <code>{{opening_hint}}</code> <code>{{banned_openers}}</code>
+            <code>{{banned_cliches}}</code> <code>{{social_proof_guide}}</code> <code>{{cta_examples}}</code>
+            <code>{{json_schema}}</code>
+          </p>
+        </details>
+        <div class="actions">
+          <button class="btn btn-primary" onclick="savePreset()">Lưu</button>
+          <button class="btn btn-danger" onclick="deletePreset()">Xóa</button>
+        </div>
+      </div>
+
+      <!-- A/B Testing -->
+      <div class="ab-section">
+        <h3>A/B Testing</h3>
+        <div class="ab-controls">
+          <div class="field">
+            <label>Variant A</label>
+            <select id="ab-a"></select>
+          </div>
+          <div class="field">
+            <label>Variant B</label>
+            <select id="ab-b"></select>
+          </div>
+          <button class="btn btn-primary" onclick="startAB()">Bắt đầu</button>
+          <button class="btn btn-secondary" onclick="stopAB()">Dừng</button>
+        </div>
+        <div class="ab-status" id="ab-status"></div>
+      </div>
+
+      <!-- History -->
+      <div class="history-section">
+        <h3>Lịch sử thay đổi</h3>
+        <div class="field">
+          <select id="history-filter" onchange="loadHistory()">
+            <option value="">Tất cả</option>
+          </select>
+        </div>
+        <div class="history-list" id="history-list"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API = '/admin/prompts/api';
+let presets = [];
+let currentId = null;
+
+async function loadPresets() {
+  const r = await fetch(`${API}/list`);
+  const d = await r.json();
+  presets = d.presets;
+  renderPresetList();
+  renderABSelects();
+  renderHistoryFilter();
+}
+
+function renderPresetList() {
+  const el = document.getElementById('preset-list');
+  el.innerHTML = presets.map(p => `
+    <div class="preset-item ${p.id === currentId ? 'active' : ''}" onclick="selectPreset('${p.id}')">
+      <div class="name">${p.name}</div>
+      <div class="desc">${p.description}</div>
+    </div>
+  `).join('');
+}
+
+function renderABSelects() {
+  const html = presets.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+  document.getElementById('ab-a').innerHTML = html;
+  document.getElementById('ab-b').innerHTML = html;
+}
+
+function renderHistoryFilter() {
+  const el = document.getElementById('history-filter');
+  el.innerHTML = '<option value="">Tất cả</option>' + presets.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+}
+
+async function selectPreset(id) {
+  currentId = id;
+  renderPresetList();
+  const r = await fetch(`${API}/${id}`);
+  const d = await r.json();
+  document.getElementById('ed-id').value = d.id;
+  document.getElementById('ed-name').value = d.name;
+  document.getElementById('ed-desc').value = d.description || '';
+  document.getElementById('ed-template').value = d.template || '';
+  document.getElementById('ed-id').readOnly = true;
+  document.getElementById('editor').style.display = 'block';
+}
+
+function newPreset() {
+  currentId = null;
+  renderPresetList();
+  document.getElementById('ed-id').value = '';
+  document.getElementById('ed-name').value = '';
+  document.getElementById('ed-desc').value = '';
+  document.getElementById('ed-template').value = '';
+  document.getElementById('ed-id').readOnly = false;
+  document.getElementById('editor').style.display = 'block';
+}
+
+async function savePreset() {
+  const fd = new FormData();
+  fd.set('style_id', document.getElementById('ed-id').value.trim());
+  fd.set('name', document.getElementById('ed-name').value.trim());
+  fd.set('description', document.getElementById('ed-desc').value.trim());
+  fd.set('template', document.getElementById('ed-template').value);
+  if (!fd.get('style_id') || !fd.get('name') || !fd.get('template')) {
+    toast('Cần điền ID, Tên và Template', true); return;
+  }
+  const r = await fetch(`${API}/save`, { method: 'POST', body: fd });
+  if (r.ok) { toast('Đã lưu!'); currentId = fd.get('style_id'); await loadPresets(); selectPreset(currentId); }
+  else { toast('Lỗi: ' + (await r.json()).detail, true); }
+}
+
+async function deletePreset() {
+  if (!currentId) return;
+  if (!confirm(`Xóa preset "${currentId}"?`)) return;
+  const r = await fetch(`${API}/${currentId}`, { method: 'DELETE' });
+  if (r.ok) { toast('Đã xóa'); currentId = null; document.getElementById('editor').style.display = 'none'; await loadPresets(); }
+  else { toast('Lỗi khi xóa', true); }
+}
+
+async function startAB() {
+  const fd = new FormData();
+  fd.set('variant_a', document.getElementById('ab-a').value);
+  fd.set('variant_b', document.getElementById('ab-b').value);
+  if (fd.get('variant_a') === fd.get('variant_b')) { toast('Chọn 2 style khác nhau', true); return; }
+  const r = await fetch(`${API}/ab-test/start`, { method: 'POST', body: fd });
+  if (r.ok) { toast('A/B test bắt đầu!'); loadABStatus(); }
+  else { toast('Lỗi: ' + (await r.json()).detail, true); }
+}
+
+async function stopAB() {
+  const r = await fetch(`${API}/ab-test/stop`, { method: 'POST' });
+  if (r.ok) { toast('A/B test đã dừng'); loadABStatus(); }
+}
+
+async function loadABStatus() {
+  const r = await fetch(`${API}/ab-test`);
+  const d = await r.json();
+  const el = document.getElementById('ab-status');
+  if (d.active) {
+    const a = presets.find(p => p.id === d.variant_a);
+    const b = presets.find(p => p.id === d.variant_b);
+    el.className = 'ab-status active';
+    el.innerHTML = `<strong>Đang chạy:</strong> ${a?.name || d.variant_a} vs ${b?.name || d.variant_b}<br><small>Từ: ${d.started_at}</small>`;
+  } else if (d.stopped_at) {
+    el.className = 'ab-status';
+    el.innerHTML = `<strong>Đã dừng.</strong> Lần cuối: ${d.variant_a} vs ${d.variant_b}<br><small>Dừng: ${d.stopped_at}</small>`;
+  } else {
+    el.className = 'ab-status';
+    el.innerHTML = 'Chưa có test nào.';
+  }
+}
+
+async function loadHistory() {
+  const filter = document.getElementById('history-filter').value;
+  const r = await fetch(`${API}/history?style_id=${filter}`);
+  const d = await r.json();
+  const el = document.getElementById('history-list');
+  if (!d.history.length) { el.innerHTML = '<p style="color:#888;padding:8px;">Chưa có lịch sử.</p>'; return; }
+  el.innerHTML = d.history.slice(-50).reverse().map(h => `
+    <div class="history-item">
+      <div>
+        <strong>${h.style_id}</strong> — ${h.action} (v${h.version})
+        <span class="meta">${h.timestamp}</span>
+      </div>
+      ${h.action !== 'delete' && h.version > 0 ? `<button class="btn btn-secondary" style="padding:4px 10px;font-size:0.8rem;" onclick="restoreVersion('${h.style_id}', ${h.version})">Khôi phục</button>` : ''}
+    </div>
+  `).join('');
+}
+
+async function restoreVersion(styleId, version) {
+  if (!confirm(`Khôi phục ${styleId} về v${version}?`)) return;
+  const fd = new FormData();
+  fd.set('style_id', styleId);
+  fd.set('version', version);
+  const r = await fetch(`${API}/restore`, { method: 'POST', body: fd });
+  if (r.ok) { toast('Đã khôi phục!'); await loadPresets(); if (styleId === currentId) selectPreset(styleId); loadHistory(); }
+  else { toast('Lỗi khi khôi phục', true); }
+}
+
+function toast(msg, err) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.style.background = err ? '#e57373' : '#66bb6a';
+  el.style.display = 'block';
+  setTimeout(() => el.style.display = 'none', 2500);
+}
+
+loadPresets();
+loadABStatus();
+loadHistory();
+</script>
+</body>
+</html>

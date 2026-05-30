@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Movie Ad Generator</title>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f2f5; color: #1a1a2e; }
+        .container { max-width: 960px; margin: 0 auto; padding: 20px; }
+        h1 { text-align: center; margin: 20px 0 8px; font-size: 1.8em; }
+        .subtitle { text-align: center; color: #666; margin-bottom: 24px; font-size: .9em; }
+        .nav-link { text-align: center; margin-bottom: 20px; }
+        .nav-link a { color: #e94560; text-decoration: none; font-size: .85em; }
+
+        /* Wizard steps */
+        .wizard-bar { display: flex; gap: 0; margin-bottom: 24px; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+        .wizard-step { flex: 1; padding: 12px 8px; text-align: center; font-size: .8em; font-weight: 600; color: #999; border-bottom: 3px solid transparent; transition: all .2s; cursor: pointer; }
+        .wizard-step.active { color: #e94560; border-bottom-color: #e94560; background: #fff5f7; }
+        .wizard-step.done { color: #10b981; border-bottom-color: #10b981; }
+        .wizard-step .step-num { display: block; font-size: 1.4em; margin-bottom: 2px; }
+
+        /* Panels */
+        .step-panel { display: none; background: #fff; padding: 24px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+        .step-panel.active { display: block; }
+
+        /* Forms */
+        label { display: block; font-weight: 600; margin: 12px 0 4px; font-size: .9em; }
+        input[type="text"], input[type="url"], textarea, select { width: 100%; padding: 10px 12px; border: 1.5px solid #ddd; border-radius: 8px; font-size: .9em; }
+        textarea { resize: vertical; min-height: 60px; }
+
+        /* Buttons */
+        .btn { display: inline-block; padding: 10px 24px; background: #e94560; color: #fff; border: none; border-radius: 8px; font-size: .9em; font-weight: 600; cursor: pointer; }
+        .btn:hover { background: #c73e54; }
+        .btn:disabled { background: #ccc; cursor: not-allowed; }
+        .btn-secondary { background: #16213e; }
+        .btn-secondary:hover { background: #0f3460; }
+
+        /* KOL cards */
+        .kol-card { background: #fff; border: 2px solid #eee; border-radius: 12px; cursor: pointer; transition: all .2s; overflow: hidden; }
+        .kol-card:hover { border-color: #e94560; box-shadow: 0 4px 12px rgba(233,69,96,.1); }
+        .kol-card.selected { border-color: #10b981; background: #f0fdf4; }
+
+        /* Navigation */
+        .step-nav { display: flex; justify-content: space-between; margin-top: 20px; padding-top: 16px; border-top: 1px solid #eee; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>🎬 Movie Ad Generator</h1>
+    <p class="subtitle">Tạo video quảng cáo sản phẩm 16 giây với KOL và kịch bản sáng tạo</p>
+    <div class="nav-link"><a href="/">← Quay lại trang chính</a></div>
+
+    <div class="wizard-bar">
+        <div class="wizard-step active" onclick="goToStep(1)"><span class="step-num">1</span>KOL</div>
+        <div class="wizard-step" onclick="goToStep(2)"><span class="step-num">2</span>Sản phẩm</div>
+        <div class="wizard-step" onclick="goToStep(3)"><span class="step-num">3</span>Kịch bản</div>
+        <div class="wizard-step" onclick="goToStep(4)"><span class="step-num">4</span>Hình ảnh</div>
+        <div class="wizard-step" onclick="goToStep(5)"><span class="step-num">5</span>Video</div>
+        <div class="wizard-step" onclick="goToStep(6)"><span class="step-num">6</span>Xuất bản</div>
+    </div>
+
+    <!-- Step 1: KOL Management -->
+    <div class="step-panel" id="step-1" style="display:block">
+        <h2 style="margin-bottom:16px">👤 Quản lý KOL</h2>
+        <p style="font-size:.85em;color:#666;margin-bottom:16px">Thêm nhân vật KOL với ảnh nhiều góc (turnaround). Ảnh trên nền đơn sắc cho kết quả tốt nhất.</p>
+
+        <!-- Upload form -->
+        <details open style="margin-bottom:20px;border:1px solid #eee;border-radius:8px;padding:12px">
+            <summary style="cursor:pointer;font-weight:600;font-size:.9em">➕ Thêm KOL mới</summary>
+            <div style="margin-top:12px">
+                <label>Tên KOL:</label>
+                <input type="text" id="kol-name" placeholder="VD: Lan — cô gái trẻ năng động">
+                <label>Mô tả ngoại hình:</label>
+                <textarea id="kol-desc" placeholder="VD: Nữ, 25 tuổi, tóc dài đen, da trắng, thường mặc áo thun trắng và quần jean" rows="2"></textarea>
+                <label>Ảnh reference (2-8 ảnh, nhiều góc):</label>
+                <input type="file" id="kol-images" accept="image/*" multiple onchange="previewKolImages(this)">
+                <div id="kol-upload-preview"></div>
+                <button id="btn-add-kol" class="btn" style="margin-top:12px" onclick="uploadKolProfile()">➕ Thêm KOL</button>
+            </div>
+        </details>
+
+        <!-- KOL list -->
+        <h3 style="font-size:.95em;margin-bottom:8px">Chọn KOL cho video:</h3>
+        <div id="kol-list"></div>
+
+        <div class="step-nav">
+            <span></span>
+            <button id="btn-next-step" class="btn" onclick="nextStep()" disabled>Tiếp theo →</button>
+        </div>
+    </div>
+
+    <!-- Step 2: Product Input -->
+    <div class="step-panel" id="step-2">
+        <h2 style="margin-bottom:16px">📦 Sản phẩm</h2>
+        <p style="font-size:.85em;color:#666;margin-bottom:16px">Nhập link Shopee hoặc lấy từ Extension — sẽ tự động lấy tên, mô tả, và ảnh sản phẩm.</p>
+
+        <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+            <input type="url" id="movie-product-url" placeholder="https://shopee.vn/..." style="flex:1;min-width:200px" onpaste="setTimeout(autoFetchMovieProduct,100)" onchange="autoFetchMovieProduct()">
+            <button onclick="fetchMovieProduct()" class="btn" style="padding:8px 16px;font-size:.85em">🔍 Lấy từ Shopee</button>
+            <button onclick="importMovieFromExtension()" class="btn" style="padding:8px 16px;font-size:.85em;background:#4ecca3;color:#1a1a2e">🔌 Extension</button>
+        </div>
+
+        <div id="movie-product-card" style="display:none;background:#f8f9fa;border-radius:8px;padding:14px;margin-bottom:12px">
+            <div style="display:flex;gap:12px;align-items:flex-start">
+                <div id="movie-product-thumb" style="width:80px;height:80px;border-radius:6px;background:#eee;flex-shrink:0;overflow:hidden"></div>
+                <div style="flex:1">
+                    <strong id="movie-product-card-title" style="font-size:.9em"></strong>
+                    <p id="movie-product-card-meta" style="font-size:.8em;color:#666;margin:4px 0"></p>
+                </div>
+            </div>
+        </div>
+
+        <label>Tên sản phẩm: *</label>
+        <input type="text" id="movie-product-title" placeholder="VD: Kem chống nắng Anessa">
+        <label>Mô tả sản phẩm:</label>
+        <textarea id="movie-product-desc" rows="3" placeholder="Đặc điểm, công dụng, điểm nổi bật..."></textarea>
+
+        <label>Affiliate link (s.shopee.vn/...):</label>
+        <input type="text" id="movie-affiliate-link" placeholder="https://s.shopee.vn/..." style="margin-bottom:12px">
+
+        <label>Ảnh sản phẩm:</label>
+        <div id="movie-img-dropzone" style="border:2px dashed #ddd;border-radius:8px;padding:16px;text-align:center;color:#999;cursor:pointer;font-size:.85em;min-height:60px"
+            ondragover="event.preventDefault();this.style.borderColor='#e94560'" ondragleave="this.style.borderColor='#ddd'">
+            📷 Kéo thả ảnh, click để chọn, hoặc chọn thư mục
+            <input type="file" id="movie-img-input" multiple accept="image/*" style="display:none">
+        </div>
+        <div style="display:flex;gap:6px;margin-top:6px">
+            <label class="btn btn-secondary" style="padding:6px 14px;font-size:.8em;cursor:pointer">📁 Chọn thư mục
+                <input type="file" webkitdirectory style="display:none" onchange="movieImportFolder(this)">
+            </label>
+            <span id="movie-img-count" style="font-size:.8em;color:#666;align-self:center"></span>
+        </div>
+        <p style="font-size:.75em;color:#999;margin-top:4px">Click ảnh để chọn/bỏ chọn cho AI (tối đa 3 ảnh, viền tím = được gửi cho AI)</p>
+        <div id="movie-img-thumbs" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px"></div>
+
+        <span id="movie-fetch-status" style="font-size:.85em;color:#666;margin-top:4px;display:block"></span>
+        <span id="project-status" style="font-size:.85em;color:#10b981;margin-top:4px;display:block"></span>
+
+        <div class="step-nav">
+            <button class="btn btn-secondary" onclick="prevStep()">← Quay lại</button>
+            <button id="btn-create-project" class="btn" onclick="createProject()">Tạo Project & Tiếp tục →</button>
+        </div>
+    </div>
+
+    <!-- Step 3: Screenplay -->
+    <div class="step-panel" id="step-3">
+        <h2 style="margin-bottom:16px">📝 Kịch bản</h2>
+        <p style="font-size:.85em;color:#666;margin-bottom:16px">AI sẽ tạo kịch bản 2 cảnh. Bạn có thể chỉnh sửa trước khi tiếp tục.</p>
+
+        <div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
+            <label style="font-size:.85em;margin:0">Câu chuyện:</label>
+            <select id="story-style-select" style="padding:6px 10px;border-radius:6px;border:1.5px solid #ddd;font-size:.85em">
+                <option value="auto">🎲 Ngẫu nhiên</option>
+            </select>
+            <label style="font-size:.85em;margin:0">Hình ảnh:</label>
+            <select id="cinematic-style-select" style="padding:6px 10px;border-radius:6px;border:1.5px solid #ddd;font-size:.85em">
+                <option value="auto">🎲 Ngẫu nhiên</option>
+            </select>
+            <button id="btn-gen-screenplay" class="btn" onclick="generateScreenplay()" style="padding:8px 16px;font-size:.9em">🎬 Tạo kịch bản</button>
+        </div>
+
+        <div id="screenplay-result"></div>
+
+        <div class="step-nav">
+            <button class="btn btn-secondary" onclick="prevStep()">← Quay lại</button>
+            <button class="btn" onclick="nextStep()">Tiếp theo →</button>
+        </div>
+    </div>
+    <div class="step-panel" id="step-4">
+        <h2 style="margin-bottom:8px">🖼️ Hình ảnh cảnh</h2>
+        <p style="font-size:.85em;color:#666;margin-bottom:16px">Tạo key frame cho mỗi clip. Gemini sẽ dùng ảnh KOL + mô tả kịch bản để tạo hình.</p>
+        <div id="scene-images-container"></div>
+        <div class="step-nav">
+            <button class="btn btn-secondary" onclick="prevStep()">← Quay lại</button>
+            <button class="btn" onclick="nextStep()">Tiếp theo →</button>
+        </div>
+    </div>
+    <div class="step-panel" id="step-5">
+        <h2 style="margin-bottom:8px">🎬 Video Clips</h2>
+        <p style="font-size:.85em;color:#666;margin-bottom:16px">Tạo video 8 giây cho mỗi clip bằng Veo 3. Scene image sẽ là frame đầu tiên.</p>
+        <div id="video-clips-container"></div>
+        <div class="step-nav">
+            <button class="btn btn-secondary" onclick="prevStep()">← Quay lại</button>
+            <button class="btn" onclick="nextStep()">Tiếp theo →</button>
+        </div>
+    </div>
+    <div class="step-panel" id="step-6">
+        <h2 style="margin-bottom:8px">📤 Xuất bản</h2>
+        <p style="font-size:.85em;color:#666;margin-bottom:16px">Ghép intro + 2 clips + outro, thêm nhạc nền, xuất video hoàn chỉnh.</p>
+        <div id="assembly-container"></div>
+        <div class="step-nav">
+            <button class="btn btn-secondary" onclick="prevStep()">← Quay lại</button>
+            <span></span>
+        </div>
+    </div>
+
+    <!-- KOL images dialog -->
+    <dialog id="kol-images-dialog" style="border-radius:12px;border:1px solid #ddd;padding:24px;max-width:700px;width:90%">
+        <div id="kol-images-content"></div>
+        <button onclick="document.getElementById('kol-images-dialog').close()" style="margin-top:12px;padding:8px 20px;border:1px solid #ddd;border-radius:8px;background:#fff;cursor:pointer">Đóng</button>
+    </dialog>
+</div>
+
+<script src="/static/js/movie/state.js"></script>
+<script src="/static/js/movie/kol.js"></script>
+<script src="/static/js/movie/screenplay.js"></script>
+<script src="/static/js/movie/preview.js"></script>
+<script src="/static/js/movie/render.js"></script>
+<script src="/static/js/movie/assemble.js"></script>
+<script src="/static/js/movie/init.js"></script>
+</body>
+</html>
