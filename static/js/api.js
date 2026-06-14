@@ -66,7 +66,7 @@ function loadKolStatus() {
 function loadReviewStyles() {
     fetch('/admin/prompts/api/list').then(r => r.json()).then(d => {
         var sel = document.getElementById('review-style-select');
-        (d.presets || []).forEach(p => {
+        (d.presets || []).filter(p => p.category !== 'movie').forEach(p => {
             var opt = document.createElement('option');
             opt.value = p.id;
             opt.textContent = p.name;
